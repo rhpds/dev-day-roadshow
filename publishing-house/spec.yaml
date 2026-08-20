@@ -16,8 +16,8 @@ project:
   automation_type: "both"
   description: "Focuses on improving developer output and efficiency with OpenShift's Application Platform capabilities. Attendees get hands-on experience with Dev Spaces with Agentic AI, GitOps, Pipelines, Developer Hub, Red Hat Application Foundations, and more."
   # content_reviewer_email and infra_reviewer_email are assigned by the RHDP team — not set by the author
-  jira_ticket: ""
-  workflow_id: ""
+  jira_ticket: "RHDPCD-1116"
+  workflow_id: "cdcb57a4-5a1b-487c-b371-2a20218bcd27"
 
 spec:
   title: ""
