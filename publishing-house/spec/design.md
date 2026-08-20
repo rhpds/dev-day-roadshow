@@ -1,4 +1,4 @@
-# [Project Title]
+# OpenShift Dev Day
 
 <!-- This file is the design document for your lab or demo. -->
 <!-- Fill in each section below, or run /rhdp-publishing-house to have the intake skill help. -->
@@ -7,38 +7,56 @@
 
 ## Overview
 
-[2-3 sentences on what this lab or demo is and why it exists. Then a direct description of what participants will do — specific enough that someone reading this section immediately understands the content without interpretation. No flowery language. Example: "Participants will deploy a 3-tier application on OpenShift, configure autoscaling, and troubleshoot a simulated pod failure."]
+OpenShift Dev Day is a 90-minute hands-on lab that demonstrates how Red Hat OpenShift's application platform capabilities can improve developer output and efficiency. Built around the fictional Parasol Insurance company, participants work through a complete inner loop and outer loop developer journey — from discovering an application in Red Hat Developer Hub to shipping a production feature through automated CI/CD and GitOps workflows. Participants will explore the software catalog using an AI assistant, create a cloud development environment, implement a REST API endpoint in Java/Quarkus, fix AI-identified code quality issues, and deploy the feature to production using GitOps.
 
 ## Target Audience
 
-- **Role:** [Data scientists, platform engineers, developers, etc.]
-- **Experience level:** [Beginner, intermediate, or advanced]
-- **What they already know:** [Existing skills and knowledge]
-- **What they don't know:** [Skills this lab teaches]
+- **Role:** Application developers and platform engineers evaluating or adopting OpenShift as a developer platform
+- **Experience level:** Intermediate
+- **What they already know:** Basic web application or REST API concepts, comfort navigating a browser-based code editor, conceptual familiarity with Git (commit, push, merge)
+- **What they don't know:** Red Hat Developer Hub, Red Hat OpenShift Dev Spaces, OpenShift Pipelines, OpenShift GitOps, or AI-assisted development tooling on OpenShift
 
 ## Prerequisites
 
-- [What the learner must know or have completed before starting]
-- [Can the lab validate these automatically? Yes/No — brief explanation]
-
-<!-- If no prerequisites, write "None" -->
+- Familiarity with basic REST API concepts (HTTP verbs, JSON responses)
+- Comfort using a browser-based IDE or code editor
+- Conceptual understanding of Git (commits, branches, merges) — no command-line Git required
+- No prior OpenShift experience required; no local tooling installation needed
+- Cannot be validated automatically — prerequisites are conceptual and self-assessed by the learner
 
 ## Learning Objectives
 
-1. [Action verb] [specific, measurable outcome]
-2. [Action verb] [specific, measurable outcome]
-3. [Action verb] [specific, measurable outcome]
+1. Explore the Red Hat Developer Hub software catalog and navigate application components using the Lightspeed AI assistant
+2. Create a cloud development environment using a self-service golden path template in Red Hat Developer Hub
+3. Build a new REST API endpoint in a Java/Quarkus application using Red Hat OpenShift Dev Spaces
+4. Analyze CI/CD pipeline results and diagnose code quality failures reported by SonarQube
+5. Implement AI-assisted code quality fixes using the Zoo Code coding assistant to remediate code smells
+6. Deploy a feature to production by merging changes in GitLab and approving GitOps manifests in Red Hat OpenShift GitOps
 
 <!-- Scale to duration: up to 3 objectives per 45 min of content. Start with action verbs: Configure, Deploy, Create, Implement, Troubleshoot, Monitor, Scale. Each should be testable. NOT: Understand, Learn, Know. -->
 
 ## Content Type
 
-[Lab (hands-on) or Demo (presenter-led)]
+Lab (hands-on)
 
 ## Products & Technologies
 
-- [Official Red Hat product name with version if relevant]
-- [Additional products/technologies]
+**Red Hat Products:**
+- Red Hat OpenShift Container Platform 4.20
+- Red Hat Developer Hub (with Lightspeed AI assistant)
+- Red Hat OpenShift Dev Spaces
+- Red Hat OpenShift Pipelines
+- Red Hat OpenShift GitOps
+
+**Upstream / Third-party (on-cluster):**
+- GitLab — source control and merge request management
+- SonarQube — static code analysis and quality gate
+- Zoo Code AI coding assistant — AI-assisted code remediation (backed by Qwen3 235b via MaaS)
+- Quarkus — Java microservices framework
+- Apache Kafka — event streaming (background infrastructure)
+
+**Languages:**
+- Java, JSON, YAML
 
 <!-- Use official names: "Red Hat OpenShift", not "OpenShift". List upstream projects separately. -->
 
@@ -46,38 +64,45 @@
 
 | Module | Title | Duration |
 |--------|-------|----------|
-| 1 | [Module title] | [XX min] |
-| 2 | [Module title] | [XX min] |
-| — | **Total hands-on** | **[X hours]** |
-| — | Intro / presentation | [~XX min] |
-| — | **Total lab** | **[~X hours]** |
+| 1 | Explore the Platform | 20 min |
+| 2 | Develop a Feature | 25 min |
+| 3 | CI/CD Pipeline & Quality Gates | 15 min |
+| 4 | AI-Assisted Code Fix | 10 min |
+| 5 | GitOps Promotion & Production Deploy | 15 min |
+| — | **Total hands-on** | **85 min** |
+| — | Intro / orientation pages | ~15 min |
+| — | **Total lab** | **~100 min (~1.5 hr)** |
 
 <!-- Each module 10-30 min. Total: lab 1-4 hours, demo 15-45 min. Modules should build on each other. -->
 
 ## Difficulty Level
 
-[Beginner, Intermediate, or Advanced]
+Intermediate
 
 ## Environment
 
-**Learner view:** [What exists when the lab starts — pre-deployed resources, what participants see and interact with. Be specific about cluster details.]
+**Learner view:** Participants access the lab through a browser with no local tooling required. On day one, a shared OpenShift cluster is pre-provisioned with Red Hat Developer Hub, Red Hat OpenShift Dev Spaces, Red Hat OpenShift Pipelines, Red Hat OpenShift GitOps (Argo CD), GitLab, and SonarQube already deployed. Each participant is namespaced to their own project/user space. All URLs are templated with a `${DOMAIN}` variable that resolves to the shared cluster's ingress domain. Participants log into Developer Hub, then Dev Spaces, then GitLab — all via browser tabs — without installing anything locally.
 
-**Automation needed:** [Yes/No]
+**Automation needed:** Yes
 
-[If yes, list what automation must provision — operators, per-user resources, sample apps, data sets.]
+Automation must provision:
+- A shared OpenShift cluster with all required operators installed (Dev Spaces, Pipelines, GitOps, Developer Hub)
+- On-cluster services: GitLab instance (with Parasol Insurance repositories pre-loaded), Developer Hub with RHDH Lightspeed configured against the Qwen3 235b MaaS endpoint, SonarQube with the Parasol project and quality profile configured, Argo CD with GitOps manifests for the Parasol application
+- Zoo Code AI coding assistant configured to use the Qwen3 235b MaaS endpoint
+- Per-participant namespaces, RBAC, and Developer Hub user accounts
+- Parasol Insurance sample application deployed in a staging/production namespace visible to participants
 
 ## Infrastructure Requirements
 
-- **Cloud provider:** [CNV (default), AWS, or Troshka (bare-metal/nested virt)]
-- **Cluster type:** [Multinode or SNO (Single Node OpenShift)]
-- **OCP version:** [e.g. 4.20 — minimum 4.20]
-- **Topology:** [Shared cluster, per-student, or CNV pool]
-- **Sizing:** [Node types and counts with resources — e.g., "3 control plane (16 CPU, 64GB RAM), 6 workers (8 CPU, 32GB RAM, 100GB disk)"]
-- **Automation approach:** [Ansible, GitOps (Helm + ArgoCD), or combo]
-- **AI/MaaS:** [None, MaaS (open-source model), MaaS (frontier model), or dedicated GPU — include justification if not "none"]
-- **External services:** [Named services — e.g., github.com, registry.access.redhat.com — or "None"]
-- **AAP version:** [e.g. 2.5 — only if AAP is in products; omit otherwise]
-- **Non-GA products:** [Product name + version, with access plan — or "None (all products are GA)"]
+- **Cloud provider:** CNV (default)
+- **Cluster type:** Multinode
+- **OCP version:** 4.20 (minimum)
+- **Topology:** Shared cluster — all participants share one OCP cluster, namespaced per participant
+- **Sizing:** TBD — to be confirmed during infrastructure review (shared cluster sizing depends on concurrent user count)
+- **Automation approach:** Both — Ansible (cluster bootstrap and operator installation) and GitOps/Helm (per-tenant namespaces and application manifests)
+- **AI/MaaS:** MaaS, open-source tier, Qwen3 235b — backs both the Zoo Code AI coding assistant and Red Hat Developer Hub Lightspeed; no dedicated GPU nodes required
+- **External services:** None — all services run on-cluster; no external SaaS dependencies
+- **Non-GA products:** None (all products are GA)
 
 <!-- Not all fields must be known at intake. "TBD, estimating ~X" is fine. -->
 
@@ -86,4 +111,4 @@
 <!-- Optional — skip this section for demos or classic labs without verification. -->
 <!-- Relevant for Zero-Touch labs with solve/validate buttons or labs with automated checks. -->
 
-[If applicable: how will we know the learner successfully completed each module? Per module: verification script, solve/validate button, visible result in the UI, or automated check.]
+This is a classic (Showroom) lab. Assessment is implicit: participants verify their own progress through visible UI outcomes — the new REST endpoint responding in the browser, the pipeline turning green, and the GitOps sync completing. No automated solve/validate buttons are required for this lab type.

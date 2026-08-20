@@ -20,18 +20,29 @@ project:
   workflow_id: "cdcb57a4-5a1b-487c-b371-2a20218bcd27"
 
 spec:
-  title: ""
-  learning_objectives: []
-  modules: []              # [{id, title, duration_min}] — written by intake Phase 4; id is stable (e.g. module-01)
+  title: "OpenShift Dev Day"
+  learning_objectives:
+    - "Explore the Red Hat Developer Hub software catalog and navigate application components using the Lightspeed AI assistant"
+    - "Create a cloud development environment using a self-service golden path template in Red Hat Developer Hub"
+    - "Build a new REST API endpoint in a Java/Quarkus application using Red Hat OpenShift Dev Spaces"
+    - "Analyze CI/CD pipeline results and diagnose code quality failures reported by SonarQube"
+    - "Implement AI-assisted code quality fixes using the Zoo Code coding assistant to remediate code smells"
+    - "Deploy a feature to production by merging changes in GitLab and approving GitOps manifests in Red Hat OpenShift GitOps"
+  modules:              # [{id, title, duration_min}] — written by intake Phase 4; id is stable (e.g. module-01)
+    - {id: module-01, title: "Explore the Platform", duration_min: 20, status: not_started}
+    - {id: module-02, title: "Develop a Feature", duration_min: 25, status: not_started}
+    - {id: module-03, title: "CI/CD Pipeline & Quality Gates", duration_min: 15, status: not_started}
+    - {id: module-04, title: "AI-Assisted Code Fix", duration_min: 10, status: not_started}
+    - {id: module-05, title: "GitOps Promotion & Production Deploy", duration_min: 15, status: not_started}
   environment:
-    platform: ""               # ocp | rhel-vms — determines which sizing fields apply
-    topology: ""               # shared-cluster | per-student | cnv-pool
+    platform: "ocp"            # ocp | rhel-vms — determines which sizing fields apply
+    topology: "shared-cluster" # shared-cluster | per-student | cnv-pool
     cloud_provider: cnv        # cnv | aws | troshka — cnv is default
     max_concurrent_users: null # required if topology = shared-cluster
 
     # --- OCP-specific fields (only when platform = ocp) ---
-    ocp_version: ""                    # e.g. 4.20 — minimum 4.20; leave empty for rhel-vms
-    cluster_type: ""                   # sno | multinode — only for platform = ocp
+    ocp_version: "4.20"                # e.g. 4.20 — minimum 4.20; leave empty for rhel-vms
+    cluster_type: "multinode"          # sno | multinode — only for platform = ocp
     control_plane_instance_count: null # 1 if sno, 3 if multinode
     control_plane_cpu: null            # 32 if sno, 16 if multinode
     control_plane_ram_gb: null         # 128 if sno, 64 if multinode
@@ -46,17 +57,17 @@ spec:
 
     # --- Common fields (both platforms) ---
     aap_version: ""                    # required if AAP in products
-    ai_requirement: ""                 # maas | gpu | none
-    ai_model_tier: ""                  # open-source | frontier (if ai_requirement = maas or gpu)
-    ai_model_name: ""                  # specific model e.g. granite-3.1-8b
+    ai_requirement: "maas"             # maas | gpu | none
+    ai_model_tier: "open-source"       # open-source | frontier (if ai_requirement = maas or gpu)
+    ai_model_name: "qwen3-235b"        # specific model e.g. granite-3.1-8b
     ai_justification: ""               # required if ai_model_tier = frontier or ai_requirement = gpu
     non_ga_products: []                # list of non-GA products/versions
     non_ga_access_plan: ""             # how access is provided for non-GA products
     external_services: []              # named external service dependencies e.g. [github.com]
     gpu_nodes: 0                       # number of GPU nodes (0 = none)
     gpu_type: ""                       # e.g. NVIDIA A100 40GB (required if gpu_nodes > 0)
-  duration_hours: null
-  audience: ""               # beginner | intermediate | advanced
+  duration_hours: 1.5
+  audience: "intermediate"   # beginner | intermediate | advanced
 
 development:
   automation:
@@ -81,11 +92,21 @@ tracking:
 approval_checklist:
 
   content:
-    prerequisites_verifiable: null
+    prerequisites_verifiable: false
     assessment_strategy: ""
     catalog_gap: ""
-    design_overview: ""
-    module_summaries: []
+    design_overview: "OpenShift Dev Day is a 90-minute hands-on lab that guides participants through a complete developer journey on the OpenShift application platform. Using a fictional Parasol Insurance scenario, participants explore Red Hat Developer Hub, develop a REST API feature in Dev Spaces, run CI/CD pipelines with quality gates, fix code smells with AI assistance, and deploy to production via GitOps."
+    module_summaries:
+      - title: "Explore the Platform"
+        overview: "Participants discover the Parasol Insurance scenario, navigate Red Hat Developer Hub's software catalog, and interact with the Lightspeed AI assistant. They then use a self-service golden path template to create a personal cloud development environment."
+      - title: "Develop a Feature"
+        overview: "Participants open Red Hat OpenShift Dev Spaces, run the Parasol application in development mode, and implement a new claims statistics REST endpoint in Java/Quarkus."
+      - title: "CI/CD Pipeline & Quality Gates"
+        overview: "Participants push their code changes and observe an OpenShift Pipeline execute end-to-end, including a SonarQube quality gate that intentionally fails due to code smells — illustrating the importance of automated quality enforcement."
+      - title: "AI-Assisted Code Fix"
+        overview: "Participants use the Zoo Code AI coding assistant to identify and fix the code smells flagged by SonarQube, then verify that the CI/CD pipeline passes."
+      - title: "GitOps Promotion & Production Deploy"
+        overview: "Participants merge the feature branch in GitLab, create a release tag, approve GitOps manifests in Argo CD, and verify that the new REST endpoint is live in the production namespace."
     rcars_overlap_pct: null
     rcars_top_matches: []
     rejections: []
