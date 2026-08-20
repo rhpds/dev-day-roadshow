@@ -94,14 +94,15 @@ Automation must provision:
 
 ## Infrastructure Requirements
 
-- **Cloud provider:** CNV (default)
+- **Cloud provider:** CNV
 - **Cluster type:** Multinode
 - **OCP version:** 4.20 (minimum)
-- **Topology:** Shared cluster — all participants share one OCP cluster, namespaced per participant
-- **Sizing:** TBD — to be confirmed during infrastructure review (shared cluster sizing depends on concurrent user count)
+- **Topology:** Shared cluster — max 30 concurrent users, namespaced per participant
+- **Control plane:** 3 nodes — 16 vCPU, 64GB RAM each
+- **Workers:** 6 nodes — 16 vCPU, 32GB RAM, 100GB disk each
 - **Automation approach:** Both — Ansible (cluster bootstrap and operator installation) and GitOps/Helm (per-tenant namespaces and application manifests)
-- **AI/MaaS:** MaaS, open-source tier, Qwen3 235b — backs both the Zoo Code AI coding assistant and Red Hat Developer Hub Lightspeed; no dedicated GPU nodes required
-- **External services:** None — all services run on-cluster; no external SaaS dependencies
+- **AI/MaaS:** MaaS, open-source tier, Qwen3 235b — RHDP-hosted on a separate cluster external to the workshop environment; backs Zoo Code AI coding assistant and RHDH Lightspeed
+- **External services:** `registry.redhat.io`, `quay.io`, `github.com` (GitOps configs and Showroom content), `open-vsx.org` (VS Code extensions provisioned into Dev Spaces), `repo1.maven.org` (Java dependencies), RHDP MaaS endpoint (URL confirmed at provisioning)
 - **Non-GA products:** None (all products are GA)
 
 <!-- Not all fields must be known at intake. "TBD, estimating ~X" is fine. -->
