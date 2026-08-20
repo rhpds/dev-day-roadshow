@@ -1,0 +1,55 @@
+= Workshop overview
+include::partial$_attributes.adoc[]
+
+== Your role and mission
+
+You are a new developer at **Parasol Insurance**.
+
+Parasol is growing fast. New product lines, new teams, new developers -- but the platform team cannot keep up. Every new team needs a custom CI/CD setup, their own namespace provisioning, and a weeks-long onboarding process. Developers spend more time filing tickets and waiting for access than they do writing code. Local environments frequently break or drift, causing lost productivity. Contractors who occasionally onboard take a long time to find relevant information and best practices.
+
+Sound familiar?
+
+Parasol's platform engineering team has been working on a solution: a cohesive application platform built on Red Hat OpenShift that provides developer tooling, CI/CD, GitOps-driven deployments, and a self-service internal developer portal -- all in one place.
+
+**Today is your first day.** You have been given access to the platform and assigned your first task. By the end of this workshop, you will have shipped a feature to production without filing a single ticket.
+
+== What you will accomplish
+
+By the end of this workshop, you will have hands-on experience with:
+
+* **Red Hat Developer Hub** -- Navigate the software catalog, discover APIs and documentation, and use the AI assistant to get answers about the platform
+* **Self-service templates** -- Create an isolated development environment with its own CI/CD pipeline using a golden path template
+* **Red Hat OpenShift Dev Spaces** -- Write code in a preconfigured cloud IDE with an AI coding assistant, without installing anything locally
+* **OpenShift Pipelines** -- Push code and watch an automated CI/CD pipeline build, test, and scan your changes
+* **OpenShift GitOps** -- See Argo CD deploy your changes to production automatically
+* **OpenShift Console** -- Use the web console for deeper debugging and application monitoring
+
+== The developer journey
+
+This workshop follows one continuous story:
+
+. **Meet the platform** -- Log into Developer Hub, explore the software catalog, and get oriented
+. **Your mission** -- Find the task assigned to you and set up your development environment
+. **Build the feature** -- Open Dev Spaces, write code, and test locally
+. **Ship it** -- Push your code through the CI/CD pipeline and hit a quality gate
+. **Call in the AI** -- Use an agentic AI assistant to fix the code, push again, and pass the pipeline
+. **Go live** -- Merge your changes, create a release, and verify the feature in production
+
+No context switching between disconnected tools. One continuous flow from idea to production.
+
+== Target audience
+
+This workshop is designed for:
+
+* Software developers who want faster, more consistent development workflows
+* IT decision makers evaluating application platform capabilities
+* Platform engineers who want to understand the developer experience they are enabling
+* Anyone interested in hands-on experience with OpenShift's developer tooling
+
+== Prerequisites
+
+You should have:
+
+* Basic familiarity with web applications and APIs
+* Comfort using a web browser and a code editor
+* Willingness to learn -- no prior OpenShift or container experience required

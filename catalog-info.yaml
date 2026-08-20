@@ -1,0 +1,38 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: dev-day-roadshow
+  title: dev-day-roadshow
+  description: Focuses on improving developer output and efficiency with
+    OpenShift's Application Platform capabilities. Attendees get hands-on
+    experience with Dev Spaces with Agentic AI, GitOps, Pipelines, Developer
+    Hub, Red Hat Application Foundations, and more.
+  annotations:
+    ph.rhdp.io/content-type: lab
+    ph.rhdp.io/deployment-mode: rhdp_published
+    ph.rhdp.io/github-user: evanshortiss
+    ph.rhdp.io/owner: eshortis@redhat.com
+    ph.rhdp.io/migrated-repo: https://github.com/rhpds/ocp-dev-days-rdshw-showroom
+    backstage.io/techdocs-ref: dir:.
+    github.com/project-slug: rhpds/dev-day-roadshow
+    ph.rhdp.io/created-at: 2026-08-20T17:11:54.881Z
+  tags:
+    - publishing-house
+    - lab
+    - rhdp-published
+    - migration
+  links:
+    - url: https://github.com/rhpds/dev-day-roadshow
+      title: Repository
+      icon: github
+    - url: https://devspaces.apps.ocpv-infra02.wdc07.infra.demo.redhat.com#https://github.com/rhpds/dev-day-roadshow
+      title: Open in DevSpaces
+      icon: catalog
+    - url: https://central-api-publishing-house.apps.ocpv-infra02.wdc07.infra.demo.redhat.com
+      title: Central
+      icon: dashboard
+spec:
+  type: content
+  lifecycle: experimental
+  owner: rhdp-team
+  system: publishing-house

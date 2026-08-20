@@ -1,0 +1,13 @@
+* xref:index.adoc[Home]
+
+* xref:01-overview.adoc[Workshop overview]
+
+* xref:02-details.adoc[Workshop details]
+
+* xref:03-module-01-developer-experience.adoc[Module 1: The developer experience]
+** xref:03-module-01-developer-experience.adoc#section-1[Section 1: Meet the platform]
+** xref:03-module-01-developer-experience.adoc#section-2[Section 2: Your mission]
+** xref:03-module-01-developer-experience.adoc#section-3[Section 3: Build the feature]
+** xref:03-module-01-developer-experience.adoc#section-4[Section 4: Ship it]
+** xref:03-module-01-developer-experience.adoc#section-5[Section 5: Call in the AI]
+** xref:03-module-01-developer-experience.adoc#section-6[Section 6: Go live]
