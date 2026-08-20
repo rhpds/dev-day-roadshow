@@ -1,0 +1,13 @@
+site_name: OpenShift Dev Day Roadshow
+docs_dir: publishing-house/spec
+nav:
+- Home: index.md
+- Design Spec: design.md
+- Modules:
+  - Module 1 - Explore Platform: modules/module-01-explore-platform.md
+  - Module 2 - Develop Feature: modules/module-02-develop-feature.md
+  - Module 3 - Cicd Pipeline: modules/module-03-cicd-pipeline.md
+  - Module 4 - Ai Code Fix: modules/module-04-ai-code-fix.md
+  - Module 5 - Gitops Go Live: modules/module-05-gitops-go-live.md
+plugins:
+- techdocs-core
