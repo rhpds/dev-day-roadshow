@@ -1,4 +1,4 @@
-# OpenShift Dev Day
+# OpenShift Dev Day Roadshow
 
 <!-- This file is the design document for your lab or demo. -->
 <!-- Fill in each section below, or run /rhdp-publishing-house to have the intake skill help. -->
@@ -7,13 +7,13 @@
 
 ## Overview
 
-OpenShift Dev Day is a 90-minute hands-on lab that demonstrates how Red Hat OpenShift's application platform capabilities can improve developer output and efficiency. Built around the fictional Parasol Insurance company, participants work through a complete inner loop and outer loop developer journey — from discovering an application in Red Hat Developer Hub to shipping a production feature through automated CI/CD and GitOps workflows. Participants will explore the software catalog using an AI assistant, create a cloud development environment, implement a REST API endpoint in Java/Quarkus, fix AI-identified code quality issues, and deploy the feature to production using GitOps.
+OpenShift Dev Day Roadshow is a modular, hands-on workshop delivered as part of Red Hat's Dev Day event series. It demonstrates how OpenShift's application platform capabilities improve developer output and efficiency, using the fictional Parasol Insurance company as the guiding scenario. The workshop is structured as a growing set of modules — current content covers the full inner and outer loop developer journey (Developer Hub, Dev Spaces, Pipelines, GitOps with AI assistance), with additional modules planned for secure software supply chain, Red Hat Application Foundation, and Red Hat Connectivity Link. Participants work through realistic developer tasks: exploring a software catalog with an AI assistant, creating a cloud development environment, writing and shipping a feature through CI/CD, and deploying to production with GitOps.
 
 ## Target Audience
 
 - **Role:** Application developers and platform engineers evaluating or adopting OpenShift as a developer platform
 - **Experience level:** Intermediate
-- **What they already know:** Basic web application or REST API concepts, comfort navigating a browser-based code editor, conceptual familiarity with Git (commit, push, merge)
+- **What they already know:** Basic web application or REST API concepts, comfort navigating a code editor, conceptual familiarity with Git (commit, push, merge)
 - **What they don't know:** Red Hat Developer Hub, Red Hat OpenShift Dev Spaces, OpenShift Pipelines, OpenShift GitOps, or AI-assisted development tooling on OpenShift
 
 ## Prerequisites

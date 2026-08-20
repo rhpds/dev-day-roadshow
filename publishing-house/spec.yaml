@@ -20,7 +20,7 @@ project:
   workflow_id: "cdcb57a4-5a1b-487c-b371-2a20218bcd27"
 
 spec:
-  title: "OpenShift Dev Day"
+  title: "OpenShift Dev Day Roadshow"
   learning_objectives:
     - "Explore the Red Hat Developer Hub software catalog and navigate application components using the Lightspeed AI assistant"
     - "Create a cloud development environment using a self-service golden path template in Red Hat Developer Hub"
@@ -94,8 +94,8 @@ approval_checklist:
   content:
     prerequisites_verifiable: false
     assessment_strategy: ""
-    catalog_gap: ""
-    design_overview: "OpenShift Dev Day is a 90-minute hands-on lab that guides participants through a complete developer journey on the OpenShift application platform. Using a fictional Parasol Insurance scenario, participants explore Red Hat Developer Hub, develop a REST API feature in Dev Spaces, run CI/CD pipelines with quality gates, fix code smells with AI assistance, and deploy to production via GitOps."
+    catalog_gap: "This is the canonical Dev Day Roadshow workshop for the RH1 2027 initiative, migrated from published.ocp-dev-days-rdshw.prod. It fills a gap for short-format, event-delivery workshops covering the full developer inner+outer loop with no prerequisites, browser-only delivery, and an AI-first approach. It is designed to grow modularly (secure supply chain, App Foundation, Connectivity Link planned) — a format not covered by the longer, prerequisite-heavy alternatives in the catalog."
+    design_overview: "OpenShift Dev Day Roadshow is a modular, hands-on workshop delivered as part of Red Hat's Dev Day event series, guiding participants through a complete developer journey on the OpenShift application platform. Using a fictional Parasol Insurance scenario, participants explore Red Hat Developer Hub, develop a REST API feature in Dev Spaces, run CI/CD pipelines with quality gates, fix code smells with AI assistance, and deploy to production via GitOps. Additional modules covering secure software supply chain, Red Hat Application Foundation, and Red Hat Connectivity Link are planned."
     module_summaries:
       - title: "Explore the Platform"
         overview: "Participants discover the Parasol Insurance scenario, navigate Red Hat Developer Hub's software catalog, and interact with the Lightspeed AI assistant. They then use a self-service golden path template to create a personal cloud development environment."
@@ -107,8 +107,32 @@ approval_checklist:
         overview: "Participants use the Zoo Code AI coding assistant to identify and fix the code smells flagged by SonarQube, then verify that the CI/CD pipeline passes."
       - title: "GitOps Promotion & Production Deploy"
         overview: "Participants merge the feature branch in GitLab, create a release tag, approve GitOps manifests in Argo CD, and verify that the new REST endpoint is live in the production namespace."
-    rcars_overlap_pct: null
-    rcars_top_matches: []
+    rcars_overlap_pct: 93
+    rcars_top_matches:
+      - title: "Unlocking OpenShift's Full Value"
+        ci_name: "published.ocp-app-platform-roi.prod"
+        url: "https://catalog.demo.redhat.com/catalog?item=published.ocp-app-platform-roi.prod"
+        relevance_score: 93
+        why_it_fits: "Covers all four core technologies — Developer Hub, Dev Spaces, Pipelines, GitOps — with the same Parasol Insurance narrative and developer journey arc."
+      - title: "OpenShift Advanced App Platform Demo"
+        ci_name: "published.ocp4-adv-app-platform-demo.prod"
+        url: "https://catalog.demo.redhat.com/catalog?item=published.ocp4-adv-app-platform-demo.prod"
+        relevance_score: 78
+        why_it_fits: "Covers Developer Hub with Lightspeed, Dev Spaces, Pipelines, and GitOps/Argo CD in the same technology set."
+      - title: "Service Enablement: App Platform Software Factory"
+        ci_name: "openshift-cnv.app-platform-factory-cnv.prod"
+        url: "https://catalog.demo.redhat.com/catalog?item=openshift-cnv.app-platform-factory-cnv.prod"
+        relevance_score: 77
+        why_it_fits: "Covers Developer Hub (golden path templates), Dev Spaces, Pipelines, and GitOps — same four technology pillars."
+        workloads:
+          - role: "ocp4_workload_authentication"
+            collection: "agnosticd.core_workloads"
+          - role: "ocp4_workload_gitops_bootstrap"
+            collection: "agnosticd.core_workloads"
+          - role: "ocp4_workload_openshift_gitops"
+            collection: "agnosticd.core_workloads"
+          - role: "ocp4_workload_showroom"
+            collection: "agnosticd.showroom"
     rejections: []
 
   infra:
