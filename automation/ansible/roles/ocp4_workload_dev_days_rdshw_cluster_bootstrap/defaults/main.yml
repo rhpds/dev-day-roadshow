@@ -1,0 +1,90 @@
+---
+# ------------------------------------------------
+# App-of-apps GitOps source
+# ------------------------------------------------
+
+# set to true to continue deployment even if child apps fail to sync/healthy
+ocp4_workload_dev_days_rdshw_wait_for_apps_ignore_errors: false
+
+ocp4_workload_dev_days_rdshw_gitops_repo: https://github.com/rhpds/ocp-dev-days-rdshw-gitops.git
+ocp4_workload_dev_days_rdshw_gitops_repo_tag: main
+
+# ------------------------------------------------
+# GitLab
+# ------------------------------------------------
+
+ocp4_workload_dev_days_rdshw_gitlab_namespace: gitlab
+ocp4_workload_dev_days_rdshw_gitlab_gitops_name: gitlab
+
+ocp4_workload_dev_days_rdshw_gitlab_config_smtp_host:
+  smtp.gitlab-{{ ocp4_workload_dev_days_rdshw_gitlab_namespace }}.{{ r_openshift_subdomain }}
+ocp4_workload_dev_days_rdshw_gitlab_config_ssh_host:
+  ssh.gitlab-{{ ocp4_workload_dev_days_rdshw_gitlab_namespace }}.{{ r_openshift_subdomain }}
+ocp4_workload_dev_days_rdshw_gitlab_config_root_password: "{{ common_password }}"
+ocp4_workload_dev_days_rdshw_gitlab_config_host:
+  "gitlab-{{ ocp4_workload_dev_days_rdshw_gitlab_namespace }}.{{ r_openshift_subdomain }}"
+
+ocp4_workload_dev_days_rdshw_gitlab_users_password: "{{ common_password }}"
+
+# ------------------------------------------------
+# Quay
+# ------------------------------------------------
+
+ocp4_workload_dev_days_rdshw_quay_application_name: quay
+ocp4_workload_dev_days_rdshw_quay_namespace: quay-registry
+
+ocp4_workload_dev_days_rdshw_quay_registry_host: "quay.{{ r_openshift_subdomain }}"
+ocp4_workload_dev_days_rdshw_quay_admin_user: quayadmin
+ocp4_workload_dev_days_rdshw_quay_admin_user_password: "{{ common_password }}"
+
+ocp4_workload_dev_days_rdshw_quay_organizations:
+  - parasol
+ocp4_workload_dev_days_rdshw_quay_users:
+  - username: dev1
+    email: dev1@rhdh.com
+    password: "{{ common_password }}"
+  - username: dev2
+    email: dev2@rhdh.com
+    password: "{{ common_password }}"
+
+# ------------------------------------------------
+# LLM / LiteLLM
+# ------------------------------------------------
+
+ocp4_workload_dev_days_rdshw_litellm_api_url: >-
+  {{ lookup('agnosticd_user_data', 'litellm_api_base_url') | default('') }}
+ocp4_workload_dev_days_rdshw_litellm_api_key: >-
+  {{ lookup('agnosticd_user_data', 'litellm_virtual_key') | default('') }}
+
+# ------------------------------------------------
+# Red Hat Developer Hub
+# ------------------------------------------------
+
+ocp4_workload_dev_days_rdshw_developer_hub_namespace: rhdh
+
+ocp4_workload_dev_days_rdshw_keycloak_backstage_client_secret: >-
+  {{ ocp4_workload_authentication_keycloak_backstage_client_secret }}
+ocp4_workload_dev_days_rdshw_keycloak_backstage_plugin_client_secret: >-
+  {{ ocp4_workload_authentication_keycloak_backstage_plugin_client_secret }}
+
+# ------------------------------------------------
+# Vault
+# ------------------------------------------------
+
+ocp4_workload_dev_days_rdshw_vault_namespace: vault
+ocp4_workload_dev_days_rdshw_vault_name: vault
+ocp4_workload_dev_days_rdshw_vault_auth_namespace: default
+
+# ------------------------------------------------
+# External Secrets
+# ------------------------------------------------
+
+ocp4_workload_dev_days_rdshw_external_secrets_namespace: external-secrets
+
+# ------------------------------------------------
+# OpenShift Dev Spaces
+# ------------------------------------------------
+
+ocp4_workload_dev_days_rdshw_devspaces_install: true
+ocp4_workload_dev_days_rdshw_devspaces_name: devspaces
+ocp4_workload_dev_days_rdshw_devspaces_namespace: openshift-devspaces

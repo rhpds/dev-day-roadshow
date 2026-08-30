@@ -1,0 +1,18 @@
+---
+namespace: dev_day_roadshow
+name: automation
+version: 1.0.0
+readme: README.md
+authors:
+  - Red Hat Demo Platform
+description: Automation collection for Dev Day Roadshow
+license:
+  - Apache-2.0
+tags:
+  - openshift
+  - workshop
+  - automation
+repository: https://github.com/rhpds/dev-day-roadshow
+documentation: https://github.com/rhpds/dev-day-roadshow
+homepage: https://github.com/rhpds/dev-day-roadshow
+issues: https://github.com/rhpds/dev-day-roadshow/issues

@@ -1,0 +1,110 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-of-apps
+  namespace: openshift-gitops
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io/foreground
+spec:
+  destination:
+    namespace: openshift-gitops
+    server: https://kubernetes.default.svc
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 10m
+      limit: 15
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+  source:
+    repoURL: {{ ocp4_workload_dev_days_rdshw_gitops_repo }}
+    targetRevision: {{ ocp4_workload_dev_days_rdshw_gitops_repo_tag }}
+    path: cluster/app-of-apps
+    helm:
+      valuesObject:
+        gitops:
+          repoURL: {{ ocp4_workload_dev_days_rdshw_gitops_repo }}
+          targetRevision: {{ ocp4_workload_dev_days_rdshw_gitops_repo_tag }}
+
+        argocd:
+          namespace: openshift-gitops
+
+        cluster:
+          subdomain: {{ r_openshift_subdomain }}
+          apiServer: {{ r_openshift_api_server }}
+
+        common:
+          password: "{{ common_password }}"
+
+        vault:
+          name: {{ ocp4_workload_dev_days_rdshw_vault_name }}
+          namespace: {{ ocp4_workload_dev_days_rdshw_vault_namespace }}
+          authNamespace: {{ ocp4_workload_dev_days_rdshw_vault_auth_namespace }}
+          secrets:
+            gitlab:
+              rootPassword: "{{ ocp4_workload_dev_days_rdshw_gitlab_config_root_password }}"
+            common:
+              password: "{{ common_password }}"
+            litellm:
+              apiUrl: "{{ ocp4_workload_dev_days_rdshw_litellm_api_url }}"
+              apiKey: "{{ ocp4_workload_dev_days_rdshw_litellm_api_key }}"
+            kafka:
+              userPassword: "{{ common_password }}"
+            rhdh:
+              argocdPassword: "{{ openshift_gitops_admin_password }}"
+            keycloak:
+              clientId: backstage
+              clientSecret: "{{ ocp4_workload_dev_days_rdshw_keycloak_backstage_client_secret }}"
+              pluginClientId: backstage-plugin
+              pluginClientSecret: "{{ ocp4_workload_dev_days_rdshw_keycloak_backstage_plugin_client_secret }}"
+
+        externalSecrets:
+          name: external-secrets
+          namespace: {{ ocp4_workload_dev_days_rdshw_external_secrets_namespace }}
+
+        openshiftPipelines:
+          name: openshift-pipelines
+
+        gitlab:
+          name: {{ ocp4_workload_dev_days_rdshw_gitlab_gitops_name }}
+          namespace: {{ ocp4_workload_dev_days_rdshw_gitlab_namespace }}
+          host: {{ ocp4_workload_dev_days_rdshw_gitlab_config_host }}
+          smtp:
+            host: {{ ocp4_workload_dev_days_rdshw_gitlab_config_smtp_host }}
+          ssh:
+            host: {{ ocp4_workload_dev_days_rdshw_gitlab_config_ssh_host }}
+          rootPassword: "{{ ocp4_workload_dev_days_rdshw_gitlab_config_root_password }}"
+          usersPassword: "{{ ocp4_workload_dev_days_rdshw_gitlab_users_password }}"
+          cluster:
+            subdomain: {{ r_openshift_subdomain }}
+
+        quay:
+          name: {{ ocp4_workload_dev_days_rdshw_quay_application_name }}
+          namespace: {{ ocp4_workload_dev_days_rdshw_quay_namespace }}
+          host: {{ ocp4_workload_dev_days_rdshw_quay_registry_host }}
+          adminUser: {{ ocp4_workload_dev_days_rdshw_quay_admin_user }}
+          adminUserPassword: "{{ ocp4_workload_dev_days_rdshw_quay_admin_user_password }}"
+          organizations: {{ ocp4_workload_dev_days_rdshw_quay_organizations }}
+          users: {{ ocp4_workload_dev_days_rdshw_quay_users | to_json }}
+
+        devspaces:
+          enabled: {{ ocp4_workload_dev_days_rdshw_devspaces_install }}
+          name: {{ ocp4_workload_dev_days_rdshw_devspaces_name }}
+          namespace: {{ ocp4_workload_dev_days_rdshw_devspaces_namespace }}
+
+        amqStreams:
+          enabled: true
+          name: amq-streams
+          namespace: kafka
+
+        developerHub:
+          name: developer-hub
+          namespace: {{ ocp4_workload_dev_days_rdshw_developer_hub_namespace }}
