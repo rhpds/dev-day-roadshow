@@ -6,7 +6,7 @@
 # set to true to continue deployment even if child apps fail to sync/healthy
 ocp4_workload_dev_days_rdshw_wait_for_apps_ignore_errors: false
 
-ocp4_workload_dev_days_rdshw_gitops_repo: https://github.com/rhpds/ocp-dev-days-rdshw-gitops.git
+ocp4_workload_dev_days_rdshw_gitops_repo: https://github.com/rhpds/dev-day-roadshow.git
 ocp4_workload_dev_days_rdshw_gitops_repo_tag: main
 
 # ------------------------------------------------

@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "tenant-bootstrap.name" . }}-cleanup
+  annotations:
+    argocd.argoproj.io/hook: PreDelete
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: {{ include "tenant-bootstrap.name" . }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tenant-cleanup
+          command:
+            - /bin/bash
+            - '-c'
+            - |
+              set -x
+              ansible-playbook -i localhost /scripts/playbook.yaml
+          image: quay.io/agnosticd/ee-multicloud:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - mountPath: /scripts
+              name: scripts
+      restartPolicy: Never
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ include "tenant-bootstrap.name" . }}-cleanup

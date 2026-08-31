@@ -1,0 +1,29 @@
+nameOverride: vault
+
+kubernetes:
+  apiserver:
+
+vault:
+  auth:
+    namespace: default
+
+secrets:
+  gitlab:
+    rootPassword: ""
+  common:
+    password: ""
+  litellm:
+    apiUrl: ""
+    apiKey: ""
+  kafka:
+    userPassword: ""
+  sonarqube:
+    adminPassword: ""
+  keycloak:
+    clientId: backstage
+    clientSecret: ""
+    pluginClientId: backstage-plugin
+    pluginClientSecret: ""
+  rhdh:
+    argocdPassword: ""
+    postgresqlPassword: ""

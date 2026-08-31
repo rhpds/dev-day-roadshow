@@ -1,0 +1,128 @@
+kind: ConfigMap
+metadata:
+  name: {{ include "tenant-bootstrap.name" . }}-cleanup
+  annotations:
+    argocd.argoproj.io/hook: PreDelete
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+apiVersion: v1
+data:
+  playbook.yaml: |
+    ---
+    - name: Tenant cleanup for {{ .Values.tenant.username }}
+      hosts: localhost
+      vars:
+        tenant_username: {{ .Values.tenant.username }}
+        gitlab_host: {{ .Values.gitlab.host }}
+        registry_host: {{ .Values.registry.host }}
+        vault_namespace: {{ .Values.vault.namespace }}
+        vault_pod: {{ .Values.vault.name }}-0
+      tasks:
+        - name: Retrieve GitLab root token
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: Secret
+            name: root-user-personal-token
+            namespace: gitlab
+          register: r_root_token
+          retries: 10
+          delay: 5
+          until:
+            - r_root_token.resources | length > 0
+            - r_root_token.resources[0].data.token is defined
+
+        - name: Decode root token
+          set_fact:
+            root_token: '{{ "{{" }} r_root_token.resources[0].data.token | b64decode {{ "}}" }}'
+
+        - name: Look up user ID
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/users?username={{ "{{" }} tenant_username {{ "}}" }}
+            method: GET
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+          register: r_user_lookup
+          retries: 5
+          delay: 5
+          until: r_user_lookup.status == 200
+
+        - name: Delete GitLab user
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/users/{{ "{{" }} r_user_lookup.json[0].id {{ "}}" }}
+            method: DELETE
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 204
+              - 404
+          when: r_user_lookup.json | length > 0
+
+        - name: Retrieve Quay admin token
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: Secret
+            name: quay-admin-token
+            namespace: quay-registry
+          register: r_quay_token
+          retries: 10
+          delay: 5
+          until:
+            - r_quay_token.resources | length > 0
+            - r_quay_token.resources[0].data.token is defined
+
+        - name: Decode Quay admin token
+          set_fact:
+            quay_admin_token: '{{ "{{" }} r_quay_token.resources[0].data.token | b64decode {{ "}}" }}'
+
+        - name: Delete Quay user {{ .Values.tenant.username }}
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} registry_host {{ "}}" }}/api/v1/superuser/users/{{ "{{" }} tenant_username {{ "}}" }}
+            method: DELETE
+            headers:
+              Authorization: 'Bearer {{ "{{" }} quay_admin_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 204
+              - 404
+
+        - name: Delete per-tenant Quay credentials from Vault
+          kubernetes.core.k8s_exec:
+            namespace: "{{ "{{" }} vault_namespace {{ "}}" }}"
+            pod: "{{ "{{" }} vault_pod {{ "}}" }}"
+            command: 'vault kv delete kv/secrets/tenants/{{ "{{" }} tenant_username {{ "}}" }}/quay/auth'
+
+        - name: Find bootstrap repos in parasol group
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects?search={{ "{{" }} tenant_username {{ "}}" }}-&search_namespaces=true&per_page=100
+            method: GET
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+          register: r_bootstrap_repos
+
+        - name: Delete bootstrap repos owned by parasol group
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} item.id {{ "}}" }}
+            method: DELETE
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 202
+              - 404
+          loop: >-
+            {{ "{{" }} r_bootstrap_repos.json | selectattr('namespace.path', 'equalto', 'parasol') | selectattr('name', 'contains', tenant_username) | list {{ "}}" }}
+          loop_control:
+            label: "{{ "{{" }} item.path_with_namespace {{ "}}" }}"
+
+        - name: Delete dev environment ArgoCD bootstrap apps
+          kubernetes.core.k8s:
+            api_version: argoproj.io/v1alpha1
+            kind: Application
+            namespace: openshift-gitops
+            name: "{{ "{{" }} item {{ "}}" }}"
+            state: absent
+          loop: >-
+            {{ "{{" }} lookup('kubernetes.core.k8s', api_version='argoproj.io/v1alpha1', kind='Application', namespace='openshift-gitops') | selectattr('metadata.name', 'contains', tenant_username) | selectattr('metadata.name', 'contains', 'bootstrap') | map(attribute='metadata.name') | list {{ "}}" }}
+          ignore_errors: true

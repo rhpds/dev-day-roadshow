@@ -1,0 +1,84 @@
+gitlab:
+  image: quay.io/redhat-gpte/gitlab:17.11.7
+  email:
+    address: "gitlab@rhdemo.com"
+    displayName: "GitLab Admin"
+    replyTo: "noreply@rhdemo.com"
+  smtp:
+    enabled: "false"
+    domain: "rhdemo.com"
+    host:
+    port: "587"
+    user: "gitlab"
+    password: "gitlab"
+  ssh:
+    host:
+    port: "22"
+  rootPassword:
+  host:
+  https: "true"
+  rootEmail: "root@rhdemo.com"
+  keyBase:
+    db: "0123456789"
+    otp: "0123456789"
+    secret: "0123456789"
+  users:
+    users:
+      - id: dev1
+        name: Dave Developer
+      - id: dev2
+        name: Divya Developer
+      - id: pe1
+        name: Paul PlatEngineer
+      - id: pe2
+        name: Priya PlatEngineer
+    password: 
+  groups:
+    - name: devteam1
+      repo: []
+      users:
+        - id: dev1
+        - id: dev2
+    - name: parasol
+      repo:
+        - name: parasol-insurance
+          url: https://github.com/openshift-dev-days/parasol-insurance.git
+        - name: parasol-insurance-manifests
+          url: https://github.com/openshift-dev-days/parasol-insurance-manifests.git
+        - name: devfiles
+          url: https://github.com/openshift-dev-days/devfiles.git
+        - name: parasol-catalog-entities
+          url: https://github.com/openshift-dev-days/parasol-catalog-entities.git
+        - name: rhdh-templates
+          url: https://github.com/openshift-dev-days/rhdh-templates.git
+      users:
+        - id: dev1
+        - id: dev2
+        - id: pe1
+        - id: pe2
+  templates:
+    - group: parasol
+      project: parasol-insurance
+      branch: main
+      templates:
+        - devfile.yaml
+    - group: parasol
+      project: rhdh-templates
+      branch: main
+      templates:
+        - templates/parasol-dev-environment/template.yaml
+postgresql:
+  dbUser: gitlab
+  dbPassword: passw0rd
+  dbName: gitlab_production
+
+cluster:
+  subdomain: 
+
+quay:
+  host: 
+
+vault:
+  name: vault
+  namespace: vault
+

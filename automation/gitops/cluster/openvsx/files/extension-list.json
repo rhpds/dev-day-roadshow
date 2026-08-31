@@ -1,0 +1,78 @@
+{
+  "vscode": "1.116.0",
+  "architecture": "linux-x64",
+  "extensions": [
+    {
+      "id": "redhat.vscode-microprofile"
+    },
+    {
+      "id": "redhat.fabric8-analytics"
+    },
+    {
+      "id": "vscode.yaml"
+    },
+    {
+      "id": "redhat.vscode-yaml"
+    },
+    {
+      "id": "redhat.vscode-xml"
+    },
+    {
+      "id": "redhat.java"
+    },
+    {
+      "id": "redhat.vscode-quarkus"
+    },
+    {
+      "id": "vscjava.vscode-java-debug"
+    },
+    {
+      "id": "vscjava.vscode-java-test"
+    },
+    {
+      "id": "redhat.vscode-tekton-pipelines"
+    },
+    {
+      "id": "vscjava.vscode-maven"
+    },
+    {
+      "id": "streetsidesoftware.code-spell-checker"
+    },
+    {
+      "id": "DavidAnson.vscode-markdownlint"
+    },
+    {
+      "id": "cnshenj.vscode-task-manager"
+    },
+    {
+      "id": "redhat.vscode-openshift-connector"
+    },
+    {
+      "id": "dbaeumer.vscode-eslint"
+    },
+    {
+      "id": "ZooCodeOrganization.zoo-code"
+    },
+    {
+      "id": "sst-dev.opencode"
+    },
+    {
+      "id": "redhat.ansible"
+    },
+    {
+      "id": "kilocode.kilo-code"
+    },
+    {
+      "id": "ms-kubernetes-tools.vscode-kubernetes-tools"
+    },
+    {
+      "id": "saoudrizwan.claude-dev"
+    },
+    {
+      "id": "vscode.html-language-features"
+    },
+    {
+      "id": "ms-python.debugpy"
+    }
+  ]
+}

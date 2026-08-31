@@ -1,0 +1,101 @@
+gitops:
+  repoURL: https://github.com/rhpds/dev-day-roadshow.git
+  targetRevision: main
+
+argocd:
+  namespace: openshift-gitops
+
+# Operator version pinning via custom CatalogSource.
+# When enabled, a snapshot of the Red Hat operator catalog is deployed
+# and all operator subscriptions use it instead of the live catalog.
+catalogSource:
+  enabled: true
+  name: redhat-operators-snapshot
+  namespace: openshift-marketplace
+  image: quay.io/gpte-devops-automation/olm_snapshot_redhat_catalog
+  tag: v4.20_2026_02_11
+  displayName: "Red Hat Operators (Snapshot)"
+  publisher: "Red Hat Demo Platform"
+
+cluster:
+  subdomain: ""
+  apiServer: ""
+
+common:
+  password: ""
+
+vault:
+  name: vault
+  namespace: vault
+  authNamespace: default
+  secrets:
+    gitlab:
+      rootPassword: ""
+    common:
+      password: ""
+    litellm:
+      apiUrl: ""
+      apiKey: ""
+    sonarqube:
+      adminPassword: ""
+    kafka:
+      userPassword: ""
+    rhdh:
+      argocdPassword: ""
+
+externalSecrets:
+  name: external-secrets
+  namespace: external-secrets
+
+openshiftPipelines:
+  name: openshift-pipelines
+  namespace: openshift-pipelines
+
+gitlab:
+  name: gitlab
+  namespace: gitlab
+  host: ""
+  smtp:
+    host: ""
+  ssh:
+    host: ""
+  rootPassword: ""
+  usersPassword: ""
+  cluster:
+    subdomain: ""
+
+quay:
+  name: quay
+  namespace: quay-registry
+  host: ""
+  adminUser: quayadmin
+  adminUserPassword: ""
+  organizations:
+    - parasol
+  users: []
+
+devspaces:
+  enabled: true
+  name: devspaces
+  namespace: openshift-devspaces
+
+amqStreams:
+  enabled: true
+  name: amq-streams
+  namespace: kafka
+
+openvsx:
+  name: openvsx
+  namespace: che-openvsx
+
+sonarqube:
+  name: sonarqube
+  namespace: sonarqube
+
+workspaceImages:
+  name: workspace-images
+  namespace: workspace-images
+
+developerHub:
+  name: developer-hub
+  namespace: rhdh

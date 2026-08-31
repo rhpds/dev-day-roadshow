@@ -1,0 +1,24 @@
+tenant:
+  username: ""
+  password: ""
+  domain: ""
+
+gitlab:
+  host: ""
+
+argocd:
+  namespace: openshift-gitops
+
+gitops:
+  repoURL: https://github.com/rhpds/dev-day-roadshow.git
+  targetRevision: main
+
+vault:
+  name: vault
+  namespace: vault
+
+cluster:
+  subdomain: ""
+
+registry:
+  host: ""

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: tenant-prereqs
+description: Shared resources required by all tenants (ClusterRole, ExternalSecrets)
+type: application
+version: 0.1.0

@@ -1,0 +1,64 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tenant-user
+rules:
+  # Secrets: list/watch only, no get (can't view contents)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["watch"]
+  # Core resources
+  - apiGroups: [""]
+    resources: ["configmaps", "endpoints", "persistentvolumeclaims", "pods", "pods/log", "pods/attach", "pods/exec", "pods/portforward", "replicationcontrollers", "services", "services/proxy", "serviceaccounts"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["events", "namespaces", "resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch"]
+  # Apps
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale", "daemonsets", "replicasets", "statefulsets"]
+    verbs: ["*"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["*"]
+  - apiGroups: ["extensions"]
+    resources: ["deployments", "deployments/scale", "replicasets"]
+    verbs: ["*"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["*"]
+  # Networking
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["*"]
+  # OpenShift
+  - apiGroups: ["route.openshift.io"]
+    resources: ["routes", "routes/custom-host"]
+    verbs: ["*"]
+  - apiGroups: ["build.openshift.io"]
+    resources: ["builds", "buildconfigs", "buildconfigs/webhooks"]
+    verbs: ["*"]
+  - apiGroups: ["image.openshift.io"]
+    resources: ["imagestreams", "imagestreamtags", "imagestreamimages"]
+    verbs: ["*"]
+  - apiGroups: ["project.openshift.io"]
+    resources: ["projects"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps.openshift.io"]
+    resources: ["deploymentconfigs", "deploymentconfigs/scale"]
+    verbs: ["*"]
+  # Tekton
+  - apiGroups: ["tekton.dev"]
+    resources: ["*"]
+    verbs: ["*"]
+  - apiGroups: ["triggers.tekton.dev"]
+    resources: ["*"]
+    verbs: ["*"]
+  # RBAC (view only)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch"]
+  # External Secrets (view only)
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets"]
+    verbs: ["get", "list", "watch"]

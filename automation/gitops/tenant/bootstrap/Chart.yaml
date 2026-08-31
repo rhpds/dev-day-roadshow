@@ -1,0 +1,5 @@
+apiVersion: v2
+name: tenant-bootstrap
+description: Tenant bootstrap chart for LB2863 - creates GitLab user, imports repos, deploys per-tenant parasol-insurance
+type: application
+version: 0.1.0

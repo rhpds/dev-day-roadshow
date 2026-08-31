@@ -1,0 +1,353 @@
+kind: ConfigMap
+metadata:
+  name: {{ include "tenant-bootstrap.name" . }}-setup
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+apiVersion: v1
+data:
+  playbook.yaml: |
+    ---
+    - name: Tenant setup for {{ .Values.tenant.username }}
+      hosts: localhost
+      vars:
+        tenant_username: {{ .Values.tenant.username }}
+        tenant_password: {{ .Values.tenant.password }}
+        gitlab_host: {{ .Values.gitlab.host }}
+        registry_host: {{ .Values.registry.host }}
+        vault_namespace: {{ .Values.vault.namespace }}
+        vault_pod: {{ .Values.vault.name }}-0
+      tasks:
+        - name: Retrieve GitLab root token
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: Secret
+            name: root-user-personal-token
+            namespace: gitlab
+          register: r_root_token
+          retries: 30
+          delay: 10
+          until:
+            - r_root_token.resources | length > 0
+            - r_root_token.resources[0].data.token is defined
+
+        - name: Decode root token
+          set_fact:
+            root_token: '{{ "{{" }} r_root_token.resources[0].data.token | b64decode {{ "}}" }}'
+
+        - name: Wait for GitLab API to be available
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects
+            method: GET
+            validate_certs: false
+          register: r_liveness
+          retries: 30
+          delay: 10
+          until: r_liveness.status == 200
+
+        - name: Create GitLab user {{ .Values.tenant.username }}
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/users
+            method: POST
+            body_format: form-urlencoded
+            body:
+              admin: false
+              email: "{{ "{{" }} tenant_username {{ "}}" }}@rhdemo.com"
+              public_email: "{{ "{{" }} tenant_username {{ "}}" }}@rhdemo.com"
+              skip_confirmation: true
+              username: "{{ "{{" }} tenant_username {{ "}}" }}"
+              password: "{{ "{{" }} tenant_password {{ "}}" }}"
+              name: "{{ "{{" }} tenant_username {{ "}}" }}"
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 201
+              - 409
+          register: r_user
+          retries: 10
+          delay: 5
+          until: r_user.status in [201, 409]
+
+        - name: Look up user ID
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/users?username={{ "{{" }} tenant_username {{ "}}" }}
+            method: GET
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+          register: r_user_lookup
+          retries: 10
+          delay: 5
+          until: r_user_lookup.json | length > 0
+
+        - name: Set user ID
+          set_fact:
+            tenant_user_id: '{{ "{{" }} r_user_lookup.json[0].id {{ "}}" }}'
+
+        - name: Create impersonation token for tenant user
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/users/{{ "{{" }} tenant_user_id {{ "}}" }}/impersonation_tokens
+            method: POST
+            body_format: form-urlencoded
+            body:
+              name: tenant-bootstrap
+              scopes: api
+              expires_at: "{{ "{{" }} '%Y-%m-%d' | strftime(ansible_date_time.epoch | int + 2592000) {{ "}}" }}"
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 201
+              - 409
+          register: r_impersonation_token
+          retries: 10
+          delay: 5
+          until: r_impersonation_token.status in [201, 409]
+
+        - name: Set tenant token from new impersonation token
+          set_fact:
+            tenant_token: '{{ "{{" }} r_impersonation_token.json.token {{ "}}" }}'
+          when: r_impersonation_token.status == 201
+
+        - name: Retrieve existing impersonation tokens
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/users/{{ "{{" }} tenant_user_id {{ "}}" }}/impersonation_tokens?state=active
+            method: GET
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+          register: r_existing_tokens
+          when: r_impersonation_token.status == 409
+
+        - name: Set tenant token from existing impersonation token
+          set_fact:
+            tenant_token: '{{ "{{" }} root_token {{ "}}" }}'
+          when: r_impersonation_token.status == 409
+
+        - name: Retrieve Quay admin token
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: Secret
+            name: quay-admin-token
+            namespace: quay-registry
+          register: r_quay_token
+          retries: 10
+          delay: 5
+          until:
+            - r_quay_token.resources | length > 0
+            - r_quay_token.resources[0].data.token is defined
+
+        - name: Decode Quay admin token
+          set_fact:
+            quay_admin_token: '{{ "{{" }} r_quay_token.resources[0].data.token | b64decode {{ "}}" }}'
+
+        - name: Wait for Quay API to be available
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} registry_host {{ "}}" }}/api/v1/discovery
+            method: GET
+            validate_certs: false
+          register: r_quay_liveness
+          retries: 30
+          delay: 10
+          until: r_quay_liveness.status == 200
+
+        - name: Create Quay user {{ .Values.tenant.username }}
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} registry_host {{ "}}" }}/api/v1/superuser/users/
+            method: POST
+            headers:
+              Authorization: 'Bearer {{ "{{" }} quay_admin_token {{ "}}" }}'
+            body:
+              username: "{{ "{{" }} tenant_username {{ "}}" }}"
+              email: "{{ "{{" }} tenant_username {{ "}}" }}@rhdemo.com"
+            body_format: json
+            validate_certs: false
+            status_code:
+              - 200
+              - 400
+          register: r_quay_user
+
+        - name: Set password for Quay user {{ .Values.tenant.username }}
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} registry_host {{ "}}" }}/api/v1/superuser/users/{{ "{{" }} tenant_username {{ "}}" }}
+            method: PUT
+            headers:
+              Authorization: 'Bearer {{ "{{" }} quay_admin_token {{ "}}" }}'
+            body:
+              password: "{{ "{{" }} tenant_password {{ "}}" }}"
+            body_format: json
+            validate_certs: false
+            status_code:
+              - 200
+
+        - name: Write per-tenant Quay credentials to Vault
+          vars:
+            quay_auth: "{{ "{{" }} tenant_username {{ "}}" }}:{{ "{{" }} tenant_password {{ "}}" }}"
+          kubernetes.core.k8s_exec:
+            namespace: "{{ "{{" }} vault_namespace {{ "}}" }}"
+            pod: "{{ "{{" }} vault_pod {{ "}}" }}"
+            command: 'vault kv put kv/secrets/tenants/{{ "{{" }} tenant_username {{ "}}" }}/quay/auth value={{ "{{" }} quay_auth | b64encode {{ "}}" }}'
+
+        - name: Set git credentials
+          ansible.builtin.command: git config --global credential.helper store
+
+        - name: Store git credentials for GitLab
+          ansible.builtin.copy:
+            dest: ~/.git-credentials
+            content: "https://root:{{ "{{" }} root_token {{ "}}" }}@{{ "{{" }} gitlab_host {{ "}}" }}"
+            mode: '0600'
+
+        - name: Git config user
+          ansible.builtin.command: "{{ "{{" }} item {{ "}}" }}"
+          loop:
+            - git config --global user.email "{{ "{{" }} tenant_username {{ "}}" }}@rhdemo.com"
+            - git config --global user.name "{{ "{{" }} tenant_username {{ "}}" }}"
+
+        - name: Create tenant projects in GitLab
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects
+            method: POST
+            body_format: json
+            body:
+              name: "{{ "{{" }} item {{ "}}" }}"
+              path: "{{ "{{" }} item {{ "}}" }}"
+              namespace_id: "{{ "{{" }} tenant_user_id {{ "}}" }}"
+              initialize_with_readme: false
+              visibility: public
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 201
+              - 400
+          loop:
+            - parasol-insurance
+            - parasol-insurance-manifests
+          register: r_create_projects
+          retries: 5
+          delay: 5
+
+        - name: Import source repos into tenant projects
+          ansible.builtin.shell: |
+            set -e
+            rm -rf /tmp/{{ "{{" }} item {{ "}}" }}
+            git clone --bare https://{{ "{{" }} gitlab_host {{ "}}" }}/parasol/{{ "{{" }} item {{ "}}" }}.git /tmp/{{ "{{" }} item {{ "}}" }}
+            cd /tmp/{{ "{{" }} item {{ "}}" }}
+            git push --mirror https://{{ "{{" }} gitlab_host {{ "}}" }}/{{ "{{" }} tenant_username {{ "}}" }}/{{ "{{" }} item {{ "}}" }}.git
+            rm -rf /tmp/{{ "{{" }} item {{ "}}" }}
+          environment:
+            GIT_SSL_NO_VERIFY: "true"
+          loop:
+            - parasol-insurance
+            - parasol-insurance-manifests
+          register: r_import_repos
+          retries: 5
+          delay: 5
+          until: r_import_repos is not failed
+
+        - name: Ensure tenant repos are public
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2F{{ "{{" }} item {{ "}}" }}
+            method: PUT
+            body_format: json
+            body:
+              visibility: public
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code: 200
+          loop:
+            - parasol-insurance
+            - parasol-insurance-manifests
+
+        - name: Clone tenant parasol-insurance to template catalog-info
+          ansible.builtin.git:
+            repo: https://{{ "{{" }} gitlab_host {{ "}}" }}/{{ "{{" }} tenant_username {{ "}}" }}/parasol-insurance.git
+            dest: /tmp/parasol-insurance-{{ "{{" }} tenant_username {{ "}}" }}
+            version: main
+          environment:
+            GIT_SSL_NO_VERIFY: "true"
+          register: r_clone_tenant
+          retries: 5
+          delay: 5
+          until: r_clone_tenant is not failed
+
+        - name: Rename catalog-info template
+          ansible.builtin.command:
+            chdir: /tmp/parasol-insurance-{{ "{{" }} tenant_username {{ "}}" }}
+            cmd: mv catalog-info.yaml.template catalog-info.yaml
+
+        - name: Replace template variables in catalog-info.yaml
+          ansible.builtin.replace:
+            path: /tmp/parasol-insurance-{{ "{{" }} tenant_username {{ "}}" }}/catalog-info.yaml
+            regexp: '\{\{\s*{{ "{{" }} item.key {{ "}}" }}\s*\}\}'
+            replace: '{{ "{{" }} item.value {{ "}}" }}'
+          loop:
+            - key: user_guid
+              value: "{{ "{{" }} tenant_username {{ "}}" }}"
+            - key: cluster_subdomain
+              value: "{{ $.Values.cluster.subdomain }}"
+
+        - name: Unprotect main branch before pushing
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2Fparasol-insurance/protected_branches/main
+            method: DELETE
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 204
+              - 404
+
+        - name: Commit and push catalog-info.yaml
+          block:
+            - name: Commit and Push
+              ansible.builtin.shell: |
+                cd /tmp/parasol-insurance-{{ "{{" }} tenant_username {{ "}}" }}
+                git add -A
+                git commit -m "chore: configure catalog-info for {{ "{{" }} tenant_username {{ "}}" }}"
+                git push origin main
+              environment:
+                GIT_SSL_NO_VERIFY: "true"
+
+          rescue:
+            - name: Remediation - Explicitly protect main branch
+              ansible.builtin.uri:
+                url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2Fparasol-insurance/protected_branches
+                method: POST
+                body_format: json
+                body:
+                  name: main
+                  push_access_level: 40
+                  merge_access_level: 40
+                  unprotect_access_level: 40
+                headers:
+                  PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+                validate_certs: false
+                status_code:
+                  - 200
+                  - 201
+                  - 400
+
+            - name: Remediation — re-unprotect main branch
+              ansible.builtin.uri:
+                url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2Fparasol-insurance/protected_branches/main
+                method: DELETE
+                headers:
+                  PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+                validate_certs: false
+                status_code:
+                  - 204
+                  - 404
+
+            - name: Remediation — retry push after unprotecting branch
+              ansible.builtin.shell: |
+                cd /tmp/parasol-insurance-{{ "{{" }} tenant_username {{ "}}" }}
+                git push origin main
+              environment:
+                GIT_SSL_NO_VERIFY: "true"
+
+        - name: Clean up cloned repo
+          ansible.builtin.file:
+            path: /tmp/parasol-insurance-{{ "{{" }} tenant_username {{ "}}" }}
+            state: absent

@@ -1,0 +1,118 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "parasol-insurance-tenant.prefix" . }}-initial-build
+  namespace: {{ include "parasol-insurance-tenant.prefix" . }}-build
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: parasol-insurance-build
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: trigger-build
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          command:
+            - /bin/bash
+            - -c
+            - |
+              NAMESPACE="{{ include "parasol-insurance-tenant.prefix" . }}-build"
+
+              echo "Checking if a PipelineRun already exists..."
+              if oc get pipelinerun -n ${NAMESPACE} --no-headers 2>/dev/null | grep -q .; then
+                echo "PipelineRun already exists, skipping initial build."
+                exit 0
+              fi
+
+              echo "Creating initial PipelineRun..."
+              cat <<'PIPELINERUN' | oc create -f -
+              apiVersion: tekton.dev/v1
+              kind: PipelineRun
+              metadata:
+                generateName: parasol-insurance-push-
+                namespace: {{ include "parasol-insurance-tenant.prefix" . }}-build
+              spec:
+                pipelineRef:
+                  name: parasol-insurance-push
+                params:
+                  - name: git-revision
+                    value: main
+                workspaces:
+                  - name: source
+                    volumeClaimTemplate:
+                      spec:
+                        accessModes:
+                          - ReadWriteOnce
+                        resources:
+                          requests:
+                            storage: 2Gi
+                  - name: basic-auth
+                    secret:
+                      secretName: gitlab-basic-auth
+                  - name: dockerconfig
+                    secret:
+                      secretName: quay-push-secret
+                  - name: sonar-credentials
+                    secret:
+                      secretName: sonarqube-credentials
+                  - name: maven-cache
+                    persistentVolumeClaim:
+                      claimName: maven-cache
+              PIPELINERUN
+              echo "Initial PipelineRun created."
+              echo "Creating initial prod tag PipelineRun..."
+              cat <<'PIPELINERUN' | oc create -f -
+              apiVersion: tekton.dev/v1
+              kind: PipelineRun
+              metadata:
+                generateName: parasol-insurance-tag-promote-
+                namespace: {{ include "parasol-insurance-tenant.prefix" . }}-build
+              spec:
+                params:
+                - name: git-tag
+                  value: '1.0'
+                - name: git-revision
+                  value: main
+                pipelineRef:
+                  name: parasol-insurance-tag-promote
+                taskRunTemplate:
+                  serviceAccountName: pipeline
+                timeouts:
+                  pipeline: 1h0m0s
+                workspaces:
+                  - name: source
+                    volumeClaimTemplate:
+                      spec:
+                        accessModes:
+                          - ReadWriteOnce
+                        resources:
+                          requests:
+                            storage: 2Gi
+                  - name: basic-auth
+                    secret:
+                      secretName: gitlab-basic-auth
+                  - name: dockerconfig
+                    secret:
+                      secretName: quay-push-secret
+                  - name: maven-cache
+                    volumeClaimTemplate:
+                      spec:
+                        accessModes:
+                          - ReadWriteOnce
+                        resources:
+                          requests:
+                            storage: 1Gi
+              PIPELINERUN
+              echo "Initial prod tag PipelineRun created."

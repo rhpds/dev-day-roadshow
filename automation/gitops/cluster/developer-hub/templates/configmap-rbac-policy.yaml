@@ -1,0 +1,84 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: rbac-policy
+  namespace: rhdh
+  labels:
+    app.kubernetes.io/name: backstage
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  rbac-policy.csv: |
+    p, role:default/developer, catalog.entity.read, read, allow
+    p, role:default/developer, catalog.location.read, read, allow
+    p, role:default/scaffolder_execute, scaffolder.action.execute, use, allow
+    p, role:default/scaffolder_execute, scaffolder.template.parameter.read, read, allow
+    p, role:default/scaffolder_execute, scaffolder.template.step.read, read, allow
+    p, role:default/scaffolder_execute, scaffolder.task.create, create, allow
+    p, role:default/scaffolder_execute, scaffolder.task.cancel, use, allow
+    p, role:default/scaffolder_execute, scaffolder.task.read, read, allow
+    p, role:default/scaffolder_execute, catalog.location.create, create, allow
+    p, role:default/plugins, topology.view.read, read, allow
+    p, role:default/plugins, tekton.view.read, read, allow
+    p, role:default/plugins, argocd.view.read, read, allow
+    p, role:default/plugins, kubernetes.proxy, use, allow
+    p, role:default/plugins, kubernetes.clusters.read, read, allow
+    p, role:default/plugins, kubernetes.resources.read, read, allow
+    p, role:default/plugins, adoption-insights.events.read, read, allow
+    p, role:default/plugins, lightspeed.chat.read, read, allow
+    p, role:default/plugins, lightspeed.chat.create, create, allow
+    p, role:default/plugins, lightspeed.chat.delete, delete, allow
+    p, role:default/admin, catalog.entity.read, read, allow
+    p, role:default/admin, catalog.entity.create, create, allow
+    p, role:default/admin, catalog.entity.delete, delete, allow
+    p, role:default/admin, catalog.entity.refresh, update, allow
+    p, role:default/admin, catalog.location.read, read, allow
+    p, role:default/admin, catalog.location.create, create, allow
+    p, role:default/admin, catalog.location.delete, delete, allow
+    g, group:default/users, role:default/developer
+    g, group:default/users, role:default/scaffolder_execute
+    g, group:default/users, role:default/plugins
+    g, group:default/admins, role:default/admin
+    g, group:default/admins, role:default/scaffolder_execute
+    g, group:default/admins, role:default/plugins
+  rbac-conditional-policies.yaml: |
+    ---
+    result: CONDITIONAL
+    roleEntityRef: 'role:default/developer'
+    resourceType: catalog-entity
+    pluginId: catalog
+    permissionMapping:
+      - read
+    conditions:
+      anyOf:
+        - rule: IS_ENTITY_OWNER
+          resourceType: catalog-entity
+          params:
+            claims:
+              - $ownerRefs
+        - rule: IS_ENTITY_KIND
+          resourceType: catalog-entity
+          params:
+            kinds:
+              - system
+              - api
+              - template
+              - group
+              - user
+              - location
+              - domain
+              - resource
+    ---
+    result: CONDITIONAL
+    roleEntityRef: 'role:default/developer'
+    resourceType: catalog-entity
+    pluginId: catalog
+    permissionMapping:
+      - delete
+      - update
+    conditions:
+      rule: IS_ENTITY_OWNER
+      resourceType: catalog-entity
+      params:
+        claims:
+          - $ownerRefs

@@ -1,0 +1,53 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+{{ include "app-of-apps.metadata" (dict "name" "developer-hub-prereqs" "namespace" .Values.argocd.namespace "syncWave" "2") }}
+spec:
+  destination:
+    namespace: {{ .Values.developerHub.namespace }}
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: automation/gitops/cluster/developer-hub-prereqs
+    repoURL: {{ .Values.gitops.repoURL }}
+    targetRevision: {{ .Values.gitops.targetRevision }}
+    helm:
+      valuesObject:
+        namespace: {{ .Values.developerHub.namespace }}
+        operator:
+          source: redhat-operators
+        vault:
+          name: {{ .Values.vault.name }}
+          namespace: {{ .Values.vault.namespace }}
+{{ include "app-of-apps.syncPolicy" . | indent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+{{ include "app-of-apps.metadata" (dict "name" "developer-hub" "namespace" .Values.argocd.namespace "syncWave" "3") }}
+spec:
+  destination:
+    namespace: {{ .Values.developerHub.namespace }}
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: automation/gitops/cluster/developer-hub
+    repoURL: {{ .Values.gitops.repoURL }}
+    targetRevision: {{ .Values.gitops.targetRevision }}
+    helm:
+      valuesObject:
+        backstage:
+          host: backstage-developer-hub-{{ .Values.developerHub.namespace }}.{{ .Values.cluster.subdomain }}
+        gitlab:
+          host: gitlab-gitlab.{{ .Values.cluster.subdomain }}
+        argocd:
+          host: openshift-gitops-server-openshift-gitops.{{ .Values.cluster.subdomain }}
+        kubernetes:
+          apiUrl: {{ .Values.cluster.apiServer }}
+        keycloak:
+          host: sso.{{ .Values.cluster.subdomain }}
+          realm: sso
+          loginRealm: master
+        sonarqube:
+          host: sonarqube-sonarqube.{{ .Values.cluster.subdomain }}
+        cluster:
+          subdomain: {{ .Values.cluster.subdomain }}
+{{ include "app-of-apps.syncPolicy" . | indent 2 }}
