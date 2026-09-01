@@ -46,9 +46,9 @@ spec:
     control_plane_instance_count: 3    # 1 if sno, 3 if multinode
     control_plane_cpu: 16              # 32 if sno, 16 if multinode
     control_plane_ram_gb: 64           # 128 if sno, 64 if multinode
-    worker_count: 6                    # number of OCP worker nodes
-    worker_cpu: 16                     # vCPU per worker
-    worker_ram_gb: 32                  # RAM per worker in GB
+    worker_count: 4                    # number of OCP worker nodes
+    worker_cpu: 32                     # vCPU per worker
+    worker_ram_gb: 64                  # RAM per worker in GB
     worker_disk_gb: 100                # disk per worker in GB
 
     # --- VM-specific fields (only when platform = rhel-vms) ---
@@ -100,7 +100,7 @@ approval_checklist:
   content:
     prerequisites_verifiable: false
     assessment_strategy: ""
-    catalog_gap: "This is the canonical Dev Day Roadshow workshop for the RH1 2027 initiative, migrated from published.ocp-dev-days-rdshw.prod. It fills a gap for short-format, event-delivery workshops covering the full developer inner+outer loop with no prerequisites, browser-only delivery, and an AI-first approach. It is designed to grow modularly (secure supply chain, App Foundation, Connectivity Link planned) — a format not covered by the longer, prerequisite-heavy alternatives in the catalog."
+    catalog_gap: "This is the canonical Dev Day Roadshow workshop for the RH1 2027 initiative, migrated from published.ocp-dev-days-rdshw.prod. It fills a gap for short-format, hands-on customer workshops that sellers and SEs can deliver to increase OpenShift stickiness and demonstrate platform value. The closest catalog item — OpenShift Advanced App Platform Demo — is a demo asset, not a workshop: customers observe rather than participate, limiting its effectiveness for building hands-on confidence. This asset is also the only item in the catalog that includes Red Hat Application Foundations and Red Hat Connectivity Link alongside the core Developer Hub, Dev Spaces, Pipelines, and GitOps stack. Additional differentiators: no prerequisites, browser-only delivery, AI-first approach, and a modular structure designed to grow (secure supply chain, RHAF, and Connectivity Link modules planned)."
     design_overview: "OpenShift Dev Day Roadshow is a modular, hands-on workshop delivered as part of Red Hat's Dev Day event series, guiding participants through a complete developer journey on the OpenShift application platform. Using a fictional Parasol Insurance scenario, participants explore Red Hat Developer Hub, develop a REST API feature in Dev Spaces, run CI/CD pipelines with quality gates, fix code smells with AI assistance, and deploy to production via GitOps. Additional modules covering secure software supply chain, Red Hat Application Foundation, and Red Hat Connectivity Link are planned."
     module_summaries:
       - title: "Explore the Platform"

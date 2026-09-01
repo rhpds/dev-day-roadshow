@@ -7,11 +7,13 @@
 
 ## Overview
 
-OpenShift Dev Day Roadshow is a modular, hands-on workshop delivered as part of Red Hat's Dev Day event series. It demonstrates how OpenShift's application platform capabilities improve developer output and efficiency, using the fictional Parasol Insurance company as the guiding scenario. The workshop is structured as a growing set of modules — current content covers the full inner and outer loop developer journey (Developer Hub, Dev Spaces, Pipelines, GitOps with AI assistance), with additional modules planned for secure software supply chain, Red Hat Application Foundation, and Red Hat Connectivity Link. Participants work through realistic developer tasks: exploring a software catalog with an AI assistant, creating a cloud development environment, writing and shipping a feature through CI/CD, and deploying to production with GitOps.
+OpenShift Dev Day Roadshow is a modular, hands-on customer workshop delivered as part of Red Hat's Dev Day event series. Unlike demo-format assets, this workshop puts customers in the driver's seat — participants complete real developer tasks in a live OpenShift environment, making it a high-impact tool for sellers and solutions engineers to build customer confidence and deepen OpenShift adoption. It demonstrates how OpenShift's application platform capabilities improve developer output and efficiency, using the fictional Parasol Insurance company as the guiding scenario.
+
+The workshop is structured as a growing set of modules. Current content covers the full inner and outer loop developer journey (Developer Hub, Dev Spaces, Pipelines, GitOps with AI assistance). Planned additional modules cover Red Hat Application Foundations and Red Hat Connectivity Link — expanding the workshop's footprint across the full platform stack and further differentiating it from demo-only assets in the catalog. Participants work through realistic developer tasks: exploring a software catalog with an AI assistant, creating a cloud development environment, writing and shipping a feature through CI/CD, and deploying to production with GitOps.
 
 ## Target Audience
 
-- **Role:** Application developers and platform engineers evaluating or adopting OpenShift as a developer platform
+- **Role:** Red Hat sellers and solutions engineers delivering customer-facing workshops; application developers and platform engineers evaluating or adopting OpenShift as a developer platform
 - **Experience level:** Intermediate
 - **What they already know:** Basic web application or REST API concepts, comfort navigating a code editor, conceptual familiarity with Git (commit, push, merge)
 - **What they don't know:** Red Hat Developer Hub, Red Hat OpenShift Dev Spaces, OpenShift Pipelines, OpenShift GitOps, or AI-assisted development tooling on OpenShift
@@ -99,7 +101,7 @@ Automation must provision:
 - **OCP version:** 4.20 (minimum)
 - **Topology:** Shared cluster — max 30 concurrent users, namespaced per participant
 - **Control plane:** 3 nodes — 16 vCPU, 64GB RAM each
-- **Workers:** 6 nodes — 16 vCPU, 32GB RAM, 100GB disk each
+- **Workers:** 4 nodes — 32 vCPU, 64GB RAM, 100GB disk each
 - **Automation approach:** Both — Ansible (cluster bootstrap and operator installation) and GitOps/Helm (per-tenant namespaces and application manifests)
 - **AI/MaaS:** MaaS, open-source tier, Qwen3 235b — RHDP-hosted on a separate cluster external to the workshop environment; backs Zoo Code AI coding assistant and RHDH Lightspeed
 - **External services:** `registry.redhat.io`, `quay.io`, `github.com` (GitOps configs and Showroom content), `open-vsx.org` (VS Code extensions provisioned into Dev Spaces), `repo1.maven.org` (Java dependencies), RHDP MaaS endpoint (URL confirmed at provisioning)
