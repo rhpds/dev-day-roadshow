@@ -42,6 +42,9 @@ spec:
 
               if [ $STATUS -eq 0 ]; then
                 echo "Vault is already unsealed and healthy"
+                # Re-apply root token so vault CLI stays authenticated across pod restarts
+                VAULT_ROOT_TOKEN=$(oc get secret vault-token -n {{ .Release.Namespace }} -o jsonpath='{.data.token}' | base64 -d)
+                oc exec {{ include "vault.name" . }}-0 -n {{ .Release.Namespace }} -- vault login "${VAULT_ROOT_TOKEN}" &>/dev/null && echo "Vault token refreshed"
                 exit 0
               elif [ $STATUS -eq 2 ]; then
                 echo "Vault is sealed, checking initialization status..."
