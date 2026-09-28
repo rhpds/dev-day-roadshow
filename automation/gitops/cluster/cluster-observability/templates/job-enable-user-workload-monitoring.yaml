@@ -55,7 +55,7 @@ spec:
       serviceAccountName: enable-user-workload-monitoring
       containers:
         - name: enable-user-workload-monitoring
-          image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+          image: registry.redhat.io/openshift4/ose-cli:v4.15.0
           command:
             - /bin/bash
             - -c
