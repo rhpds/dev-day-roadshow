@@ -15,3 +15,7 @@ www/
 *.pyc
 __pycache__/
 *.tar.gz
+
+# Helm chart packages
+charts/*.tgz
+**/charts/*.tgz
