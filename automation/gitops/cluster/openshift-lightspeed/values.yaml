@@ -12,7 +12,7 @@ images:
 llm:
   apiUrl: ""
   provider: openai
-  model: qwen3-235b
+  model: qwen38-27b
 
 vault:
   secretStore: vault-secret-store
