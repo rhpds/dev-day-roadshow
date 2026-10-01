@@ -85,7 +85,7 @@ image::agentic-troubleshooting-mode-selector.png[Lightspeed troubleshooting mode
 
 . Ask Lightspeed to investigate the issue:
 +
-[source,role="copypaste"]
+[source,subs="attributes",role="copypaste"]
 ----
 Investigate the timeout connection issue in the {user}-parasol-web namespace.
 ----
@@ -136,7 +136,7 @@ NOTE: If the alerts are not yet firing, wait a few minutes. A recent deployment 
 
 . In the Lightspeed chat, ask it to investigate the alert:
 +
-[source,role="copypaste"]
+[source,subs="attributes",role="copypaste"]
 ----
 Investigate the root cause of the PaymentErrorRateHigh alert in the {user}-parasol-payments namespace
 ----
