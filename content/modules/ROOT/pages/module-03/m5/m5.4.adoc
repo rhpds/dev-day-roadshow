@@ -39,6 +39,21 @@ Every LLM request consumes compute power, and richer analysis consumes more of i
 
 In this exercise, the Customer Profile Tool goes beyond simple rate limiting with a graceful degradation strategy. It first attempts a *Gold* analysis, and when the Gold budget is consumed, falls back to *Silver* to keep producing useful profiles at a lower cost. Only when both are exhausted is the request rejected:
 
+[NOTE]
+====
+.See how the fallback is implemented in Camel
+[%collapsible]
+=====
+The route below shows the Gold path definition in Camel. Inside a Circuit Breaker block, it obtains data for the LLM to process. If Connectivity Link rate-limits the call, it responds with an error, Camel marks the path as failed, and the route falls back to the Silver path.
+
+image::module-03/m5/kaoto-gold-fallback.png[Gold with fallback route in Kaoto, width=100%]
+=====
+====
+
+{blank} 
+
+The diagram below illustrates the flow of the fallback strategy:
+
 {blank}
 
 [.mermaid]

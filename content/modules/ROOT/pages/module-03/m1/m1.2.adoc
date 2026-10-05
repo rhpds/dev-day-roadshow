@@ -82,7 +82,8 @@ sequenceDiagram
 [.indent2]
 include::../_shared/close-tabs.adoc[]
 
-. From your terminal in _Dev Spaces_, run the following command:
+. From your terminal in _Dev Spaces_, run the following command: +
+(close any open Camel file tabs first — they may not auto-refresh after running this command)
 +
 {blank}
 +

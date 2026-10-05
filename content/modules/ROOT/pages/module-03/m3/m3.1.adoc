@@ -10,7 +10,8 @@ include::../_shared/close-tabs.adoc[]
 
 . From your terminal in _Dev Spaces_:
 .. If you have any running processes, stop them with kbd:[Ctrl+C].
-.. Run the following command:
+.. Run the following command: +
+(close any open Camel file tabs first — they may not auto-refresh after running this command)
 +
 {blank}
 +
