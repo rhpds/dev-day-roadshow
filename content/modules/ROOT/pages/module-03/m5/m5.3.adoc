@@ -4,7 +4,7 @@ include::partial$style.adoc[]
 
 == Test Authentication
 
-In the previous section you deployed an AuthPolicy that locks down the LLM endpoint. Here is how the customer profile analysis capability fits into the architecture, and where the AuthPolicy image:common/guardrail-icon.svg[width=40] acts:
+In the previous section you deployed an AuthPolicy that locks down the LLM endpoint. Here is how the customer profile analysis capability fits into the architecture, and where the AuthPolicy image:module-03/common/guardrail-icon.svg[width=40] acts:
 
 [#auth-diagram.mermaid]
 ----
@@ -171,7 +171,7 @@ TIP: If you haven't logged in yet, follow the xref:module-03/m2/m2.2.adoc[Rocket
 +
 {empty} +
 
-. In the left sidebar, find and select the `ai-support` channel that matches your user number:
+. In the left sidebar, find and select the `ai-support` channel that matches your user identifier:
 +
 [subs=attributes]
 ++++
@@ -188,8 +188,8 @@ TIP: If you haven't logged in yet, follow the xref:module-03/m2/m2.2.adoc[Rocket
       var uv = document.querySelector('.uservar');
       if (uv) name = uv.textContent;
     }
-    var num = (name || '').replace(/\D/g, '');
-    el.textContent = num || 'N';
+    var match = (name || '').match(/^user(-\S+)$/);
+    el.textContent = match ? match[1] : '-xxxxx';
   }
   if (document.readyState === 'complete') resolve();
   else window.addEventListener('load', resolve);

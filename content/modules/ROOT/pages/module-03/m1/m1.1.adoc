@@ -394,7 +394,7 @@ Wait until the `STATUS` column shows `Ready`:
 
 [subs=attributes]
 ++++
-<pre style="background-color: #272822; padding: 10px 15px; line-height: 1.4; white-space: pre-wrap; font-family: monospace; font-size: 14px; color: white">NAME         STATUS   SITES IN NETWORK   MESSAGE
+<pre style="background-color: #272822; padding: 10px 15px; line-height: 1.4; white-space: pre-wrap; font-family: monospace; font-size: 14px; color: white">NAME              STATUS   SITES IN NETWORK   MESSAGE
 {username}-site   Ready    1                  OK</pre>
 ++++
 
@@ -483,9 +483,10 @@ Wait until the `STATUS` column shows `Ready`:
 
 {blank}
 
+[subs=attributes]
 ++++
-<pre style="background-color: #272822; padding: 10px 15px; line-height: 1.4; white-space: pre-wrap; font-family: monospace; font-size: 14px; color: white">NAME            REDEMPTIONS ALLOWED   REDEMPTIONS MADE   EXPIRATION             STATUS   MESSAGE
-grant-userN     1                                        2026-03-27T11:29:08Z   Ready    OK</pre>
+<pre style="background-color: #272822; padding: 10px 15px; line-height: 1.4; white-space: pre-wrap; font-family: monospace; font-size: 14px; color: white">NAME                 REDEMPTIONS ALLOWED   REDEMPTIONS MADE   EXPIRATION             STATUS   MESSAGE
+grant-{username}     1                                        2026-03-27T11:29:08Z   Ready    OK</pre>
 ++++
 
 Your AccessGrant is ready. Here's your progress:
@@ -554,7 +555,7 @@ Wait until the link status shows `Ready`:
 
 [subs="attributes"]
 ++++
-<pre style="background-color: #272822; padding: 10px 15px; line-height: 1.4; white-space: pre-wrap; font-family: monospace; font-size: 14px; color: white">NAME            STATUS   REMOTE SITE    MESSAGE
+<pre style="background-color: #272822; padding: 10px 15px; line-height: 1.4; white-space: pre-wrap; font-family: monospace; font-size: 14px; color: white">NAME                 STATUS   REMOTE SITE    MESSAGE
 token-{username}     Ready    {username}-site     OK</pre>
 ++++
 

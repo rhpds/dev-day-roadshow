@@ -57,3 +57,26 @@ xref:module-03/m5/m5.0.adoc[Lab 5 -- LLM Governance]
 
 Secure and govern LLM access with Red Hat Connectivity Link — enforce API key authentication and token-based rate limiting per user tier.
 ****
+
+[TIP]
+--
+To navigate between modules, use the left-hand side panel — if it's not visible, click the menu icon in the top-left corner to open it.
+
+{blank}
+
+.Show me how
+[%collapsible]
+====
+Click the menu icon (top-left) to open the navigation panel:
+
+[.bordered]
+image::module-03/index/showroom-nav-header.png[Menu icon in top-left corner, width=50%]
+
+{blank}
+
+Then select the module you want to start:
+
+[.bordered]
+image::module-03/index/showroom-left-nav.png[Left navigation panel with modules, width=50%]
+====
+--

@@ -27,7 +27,7 @@ include::../_shared/kaoto-intro.adoc[]
 --
 
 
-Kaoto will open the file and display all the route definitions it contains. The file includes several routes, but the one we want to focus on is the main agentic flow.
+Kaoto will open the file and display all the route definitions it contains. The file includes several routes, but the one we want to focus on is the main agentic flow. Do as follows:
 
 // You may find the routes displayed vertically. For better readability, switch to horizontal layout by clicking the middle button at the bottom of the canvas:
 
@@ -35,8 +35,6 @@ Kaoto will open the file and display all the route definitions it contains. The 
 // image::module-03/m1/kaoto-horizontal-layout.png[width=50%]
 
 // {empty} +
-
-The file contains several routes. To focus on the main agentic flow:
 
 . Click the *Routes* dropdown in the upper-left toolbar
 . Select `rocketchat-to-agent` from the list
@@ -140,7 +138,7 @@ Switch to your _Rocket.Chat_ window.
 
 TIP: If you haven't logged in yet, follow the xref:module-03/m2/m2.2.adoc[Rocket.Chat platform onboarding,window=_blank] instructions (opens in a new tab).
 
-In the left sidebar, find and select the `ai-support` channel that matches your user number:
+In the left sidebar, find and select the `ai-support` channel that matches your user identifier:
 
 [subs=attributes]
 ++++
@@ -157,8 +155,8 @@ In the left sidebar, find and select the `ai-support` channel that matches your 
       var uv = document.querySelector('.uservar');
       if (uv) name = uv.textContent;
     }
-    var num = (name || '').replace(/\D/g, '');
-    el.textContent = num || 'N';
+    var match = (name || '').match(/^user(-\S+)$/);
+    el.textContent = match ? match[1] : '-xxxxx';
   }
   if (document.readyState === 'complete') resolve();
   else window.addEventListener('load', resolve);
@@ -811,6 +809,8 @@ Click the ticket to inspect its details. The AI agent composed the ticket body f
 include::_figures/helpdesk-ticket-detail.adoc[]
 
 The full circle is complete: the AI assistant retrieved a policy document, amended it, raised a ticket with all the relevant details, and shared it with the customer across messaging platforms. All from natural conversation.
+
+When you're done, press kbd:[Ctrl+C] in the terminal to stop Camel.
 
 {empty} +
 

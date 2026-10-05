@@ -29,5 +29,5 @@ output:
 
 asciidoc:
   attributes:
-    username: user1
+    username: user-vgbgw
     url-docserver: http://localhost:9090

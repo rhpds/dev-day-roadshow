@@ -8,7 +8,9 @@ include::partial$style.adoc[]
 [.indent2]
 include::../_shared/close-tabs.adoc[]
 
-. From your terminal in _Dev Spaces_, run the following command:
+. From your terminal in _Dev Spaces_:
+.. If you have any running processes, stop them with kbd:[Ctrl+C].
+.. Run the following command:
 +
 {blank}
 +

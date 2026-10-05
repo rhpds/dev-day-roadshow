@@ -90,9 +90,10 @@ document.addEventListener('DOMContentLoaded', function() {
     node.style.cursor = 'pointer';
     node.addEventListener('mouseenter', function(e) {
       var rect = node.getBoundingClientRect();
-      pop.style.left = rect.left + 'px';
-      pop.style.top = (rect.bottom + window.scrollY + 8) + 'px';
       pop.style.display = 'block';
+      var left = (rect.left + pop.offsetWidth > window.innerWidth) ? 0 : rect.left;
+      pop.style.left = left + 'px';
+      pop.style.top = (rect.bottom + window.scrollY + 8) + 'px';
     });
     node.addEventListener('mouseleave', function(e) {
       var to = e.relatedTarget;
@@ -108,9 +109,11 @@ document.addEventListener('DOMContentLoaded', function() {
       xmlNode.style.cursor = 'pointer';
       xmlNode.addEventListener('mouseenter', function(e) {
         var rect = xmlNode.getBoundingClientRect();
-        xmlPop.style.left = (rect.right - xmlPop.offsetWidth) + 'px';
-        xmlPop.style.top = (rect.bottom + window.scrollY + 8) + 'px';
         xmlPop.style.display = 'block';
+        var left = rect.right - xmlPop.offsetWidth;
+        if (left < 0 || left + xmlPop.offsetWidth > window.innerWidth) left = 0;
+        xmlPop.style.left = left + 'px';
+        xmlPop.style.top = (rect.bottom + window.scrollY + 8) + 'px';
       });
       xmlNode.addEventListener('mouseleave', function(e) {
         var to = e.relatedTarget;
