@@ -192,6 +192,39 @@
       register: r_argo_checks
       loop: "{{ tenant_argo_apps }}"
 
+    - name: Identify Progressing ArgoCD apps
+      ansible.builtin.set_fact:
+        _progressing_apps: >-
+          {{ r_argo_checks.results
+             | selectattr('resources', 'defined')
+             | selectattr('resources')
+             | selectattr('resources.0.status.health.status', 'equalto', 'Progressing')
+             | map(attribute='item')
+             | list }}
+
+    - name: Wait for Progressing ArgoCD apps to reconcile
+      when: _progressing_apps | length > 0
+      block:
+        - name: "Wait 30s for ArgoCD apps to finish reconciling"
+          ansible.builtin.pause:
+            seconds: 30
+
+        - name: "Recheck ArgoCD apps for {{ _tenant_user }}"
+          kubernetes.core.k8s_info:
+            host: "{{ _k8s_host | default(omit, true) }}"
+            api_key: "{{ _k8s_api_key | default(omit, true) }}"
+            validate_certs: "{{ _k8s_validate_certs }}"
+            api_version: argoproj.io/v1alpha1
+            kind: Application
+            namespace: openshift-gitops
+            name: "{{ item }}"
+          register: r_argo_recheck
+          loop: "{{ tenant_argo_apps }}"
+
+        - name: Update results with recheck data
+          ansible.builtin.set_fact:
+            r_argo_checks: "{{ r_argo_recheck }}"
+
     - name: Record unhealthy ArgoCD apps
       ansible.builtin.set_fact:
         healthcheck_failures: >-
