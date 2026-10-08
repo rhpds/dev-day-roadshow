@@ -180,35 +180,32 @@
     # EXERCISE 1: Investigate + fix frontend timeout (parasol-web)
     # =================================================================
 
-    - name: "M4-E1: Get parasol-web frontend route"
+    # Step 1: Student sees timeout — frontend pod can't reach backend (NetworkPolicy blocks it)
+    - name: "E1-BEFORE: Get a frontend pod name"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
         validate_certs: "{{ _k8s_validate_certs }}"
-        api_version: route.openshift.io/v1
-        kind: Route
+        api_version: v1
+        kind: Pod
         namespace: "{{ _tenant_user }}-parasol-web"
-      register: r_parasol_web_routes
+        label_selectors:
+          - app=frontend
+        field_selectors:
+          - status.phase=Running
+      register: r_frontend_pods
 
-    - name: Set parasol-web frontend URL
-      ansible.builtin.set_fact:
-        _parasol_web_url: "https://{{ r_parasol_web_routes.resources[0].spec.host }}"
-      when: r_parasol_web_routes.resources | default([]) | length > 0
-
-    # Step 1: Student hits frontend — sees timeout (NetworkPolicy blocks frontend→backend)
-    - name: "E1-BEFORE: HTTP GET parasol-web (student sees timeout from broken NetworkPolicy)"
-      ansible.builtin.uri:
-        url: "{{ _parasol_web_url }}"
-        method: GET
-        validate_certs: false
-        status_code: [200, 502, 503, 504]
-        timeout: 15
-      loop: "{{ range(0, _load_iterations | int) | list }}"
-      loop_control:
-        label: "pre-fix-{{ item }}"
+    - name: "E1-BEFORE: Test frontend→backend connectivity (expect timeout)"
+      kubernetes.core.k8s_exec:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        namespace: "{{ _tenant_user }}-parasol-web"
+        pod: "{{ r_frontend_pods.resources[0].metadata.name }}"
+        command: "sh -c 'wget -qO- --timeout=5 http://backend-service:8080/health 2>&1 || true'"
       register: r_web_before
       ignore_errors: true
-      when: _parasol_web_url is defined
+      when: r_frontend_pods.resources | length > 0
 
     # Step 2: Student investigates — check backend pods
     - name: "E1-INVESTIGATE: List backend pods (student checks pod status)"
@@ -257,20 +254,18 @@
       ignore_errors: true
       register: r_netpol_patch
 
-    # Step 5: Student verifies fix — frontend should respond now
-    - name: "E1-AFTER: HTTP GET parasol-web (student verifies fix worked)"
-      ansible.builtin.uri:
-        url: "{{ _parasol_web_url }}"
-        method: GET
-        validate_certs: false
-        status_code: [200, 502, 503, 504]
-        timeout: 15
-      loop: "{{ range(0, _load_iterations | int) | list }}"
-      loop_control:
-        label: "post-fix-{{ item }}"
+    # Step 5: Student verifies fix — frontend can now reach backend
+    - name: "E1-AFTER: Test frontend→backend connectivity (expect success)"
+      kubernetes.core.k8s_exec:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        namespace: "{{ _tenant_user }}-parasol-web"
+        pod: "{{ r_frontend_pods.resources[0].metadata.name }}"
+        command: "sh -c 'wget -qO- --timeout=5 http://backend-service:8080/health 2>&1 || true'"
       register: r_web_after
       ignore_errors: true
-      when: _parasol_web_url is defined
+      when: r_frontend_pods.resources | length > 0
 
     # =================================================================
     # EXERCISE 2: Diagnose + fix critical alert (parasol-payments)
@@ -493,9 +488,9 @@
       ansible.builtin.debug:
         msg: >-
           Module 4 workflow complete for {{ _tenant_user }}:
-          E1 parasol-web BEFORE fix: {{ r_web_before.results | default([]) | length }}/{{ _load_iterations }} requests |
+          E1 frontend→backend BEFORE fix: {{ r_web_before.rc | default('skipped') }} |
           E1 NetworkPolicy patch: {{ 'applied' if (r_netpol_patch is defined and r_netpol_patch is not failed) else 'skipped/failed' }} |
-          E1 parasol-web AFTER fix: {{ r_web_after.results | default([]) | length }}/{{ _load_iterations }} requests |
+          E1 frontend→backend AFTER fix: {{ r_web_after.rc | default('skipped') }} |
           E2 payments-api BEFORE rollback: {{ r_payments_before.results | default([]) | length }}/{{ _load_iterations }} requests |
           E2 reporting-service rollback: {{ 'done' if ((r_rollback_sa is defined and r_rollback_sa is not failed) or (r_rollback_cli is defined and r_rollback_cli is not failed)) else 'skipped/failed' }} |
           E2 payments-api AFTER rollback: {{ r_payments_after.results | default([]) | length }}/{{ _load_iterations }} requests |
