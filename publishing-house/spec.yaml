@@ -26,16 +26,18 @@ spec:
     - "Create a cloud development environment using a self-service golden path template and build a REST API feature in Dev Spaces"
     - "Push code through an automated CI/CD pipeline, diagnose SonarQube quality gate failures, and fix code smells with AI assistance"
     - "Deploy a feature to production via GitOps promotion in Argo CD"
+    - "Secure the software supply chain from code to production by implementing automated compliance, security guardrails, and verifiable trust artifacts (SLSA Level 3) using Red Hat Advanced Developer Suite tools"
     - "Build Apache Camel integrations for data ingestion with EDI-to-XML transformation and Service Interconnect"
     - "Bridge messaging platforms via Kafka event-driven architecture and build an agentic AI support bot with Camel and MaaS"
     - "Govern LLM access with Red Hat Connectivity Link (API key auth and token rate limiting)"
     - "Use OpenShift Lightspeed to investigate application issues, diagnose alerts, request AI-assisted remediation, and build monitoring dashboards"
+    - "Analyze legacy workloads using the Migration Toolkit for Applications (MTA), accelerate code refactoring with Red Hat Developer Lightspeed, and deploy modern applications to Red Hat OpenShift"
   modules:              # [{id, title, duration_min}] — synced from content/ (source of truth); id is stable
     - {id: module-01, title: "The Developer Experience", duration_min: 85, status: complete}
-    - {id: module-02, title: "TBD — Pending from content authors", duration_min: 0, status: not_started}
+    - {id: module-02, title: "Secure Software Factory", duration_min: 35, status: not_started}
     - {id: module-03, title: "App Connectivity for AI", duration_min: 150, status: complete}
     - {id: module-04, title: "AI-Powered Troubleshooting", duration_min: 35, status: complete}
-    - {id: module-05, title: "TBD — Pending from content authors", duration_min: 0, status: not_started}
+    - {id: module-05, title: "AI-Driven App Modernization", duration_min: 35, status: not_started}
   environment:
     platform: "ocp"            # ocp | rhel-vms — determines which sizing fields apply
     topology: "shared-cluster" # shared-cluster | per-student | cnv-pool
@@ -107,14 +109,14 @@ approval_checklist:
     module_summaries:
       - title: "The Developer Experience"
         overview: "Full inner+outer loop developer journey: explore Developer Hub and Lightspeed, create a Dev Spaces workspace via golden path template, build a Quarkus REST endpoint, push through CI/CD pipeline with SonarQube quality gates, fix code smells with Zoo Code AI assistant, and deploy to production via GitOps/Argo CD."
-      - title: "TBD — Pending"
-        overview: "Module 2 content pending from content authors (James Falkner). Expected delivery within one week of 2026-10-08."
+      - title: "Secure Software Factory"
+        overview: "Participants configure CI/CD pipelines with integrated security checks, generate and verify supply chain provenance artifacts, and utilize developer hub automation to streamline secure deployments. Implements SLSA Level 3 compliance using Red Hat Advanced Developer Suite tools."
       - title: "App Connectivity for AI"
         overview: "Five-lab track covering Apache Camel data ingestion (EDI→XML), Service Interconnect for cross-cluster DB connectivity, Kafka-based messaging bridge (Matrix↔Rocket.Chat), agentic AI support bot with Camel+MaaS and MCP tool calling, and LLM governance via Connectivity Link (API key auth, token rate limiting)."
       - title: "AI-Powered Troubleshooting"
         overview: "Three exercises using OpenShift Lightspeed MCP: investigate a NetworkPolicy timeout, diagnose a cascading DB connection exhaustion alert with rollback remediation, and build a Perses monitoring dashboard via natural language — no PromQL required."
-      - title: "TBD — Pending"
-        overview: "Module 5 content pending from content authors (James Falkner). Expected delivery within one week of 2026-10-08."
+      - title: "AI-Driven App Modernization"
+        overview: "Hands-on workshop covering AI-enabled application modernization: run migration analysis with the Migration Toolkit for Applications (MTA), perform AI-guided code refactoring to Quarkus using Red Hat Developer Lightspeed, and deploy modernized applications to OpenShift."
     rcars_overlap_pct: 93
     rcars_top_matches:
       - title: "Unlocking OpenShift's Full Value"
