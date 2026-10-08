@@ -7,11 +7,15 @@
 #   Validates that a tenant environment is fully provisioned and ready
 #   for a student to use. Runs at tenant order time via Showroom API.
 #
-# Usage:
+# Usage (CLI):
 #   ansible-playbook qa-automation/healthcheck.yml \
 #     -e "ocp_api_url=https://api.cluster-xxx.dyn.redhatworkshops.io:6443" \
 #     -e "ocp_admin_password=xxx" \
 #     -e "tenant_user=user-abc12"
+#
+# Usage (Showroom runner):
+#   Runs automatically — picks up openshift_api_url and user from
+#   user_data.yml, authenticates via the runtime-automation SA token.
 #
 # What it checks (in order):
 #   1. Tenant namespaces exist
@@ -31,65 +35,67 @@
   gather_facts: false
 
   vars:
-    # --- Required inputs (pass via -e) ---
-    # ocp_api_url: cluster API URL
-    # ocp_admin_password: cluster admin password
-    # tenant_user: tenant username (e.g. user-2lr58)
+    # --- Inputs (from CLI -e or showroom user_data.yml) ---
+    # CLI names:     ocp_api_url, ocp_admin_password, tenant_user
+    # user_data:     openshift_api_url, user (+ SA token for auth)
 
-    # --- Derived values ---
-    ocp_admin_user: admin
+    # --- Normalize variable names across both entry points ---
+    _api_url: "{{ ocp_api_url | default(openshift_api_url) }}"
+    _tenant_user: "{{ tenant_user | default(user) }}"
+    _sa_token_path: /var/run/secrets/kubernetes.io/serviceaccount/token
+    _use_sa_token: "{{ ocp_admin_password is not defined }}"
 
     # Namespaces we expect per tenant
     tenant_namespaces:
-      - "{{ tenant_user }}-build"
-      - "{{ tenant_user }}-dev"
-      - "{{ tenant_user }}-prod"
-      - "{{ tenant_user }}-parasol-payments"
-      - "{{ tenant_user }}-parasol-web"
-      - "{{ tenant_user }}-showroom"
-      - "{{ tenant_user }}-devspaces"
+      - "{{ _tenant_user }}-build"
+      - "{{ _tenant_user }}-dev"
+      - "{{ _tenant_user }}-prod"
+      - "{{ _tenant_user }}-parasol-payments"
+      - "{{ _tenant_user }}-parasol-web"
+      - "{{ _tenant_user }}-showroom"
+      - "{{ _tenant_user }}-devspaces"
 
     # ArgoCD apps we expect per tenant
     tenant_argo_apps:
-      - "bootstrap-tenant-{{ tenant_user }}"
-      - "{{ tenant_user }}-build"
-      - "{{ tenant_user }}-dev"
-      - "{{ tenant_user }}-prod"
-      - "{{ tenant_user }}-parasol-insurance"
-      - "{{ tenant_user }}-parasol-troubleshooting"
-      - "{{ tenant_user }}-workload-m3"
+      - "bootstrap-tenant-{{ _tenant_user }}"
+      - "{{ _tenant_user }}-build"
+      - "{{ _tenant_user }}-dev"
+      - "{{ _tenant_user }}-prod"
+      - "{{ _tenant_user }}-parasol-insurance"
+      - "{{ _tenant_user }}-parasol-troubleshooting"
+      - "{{ _tenant_user }}-workload-m3"
 
     # Deployments to check: namespace -> list of deployment names
     # Only checking the critical ones — if these are up, the tenant is usable
     tenant_deployments:
-      - namespace: "{{ tenant_user }}-dev"
+      - namespace: "{{ _tenant_user }}-dev"
         deployments:
           - parasol-insurance
           - parasol-db
-      - namespace: "{{ tenant_user }}-prod"
+      - namespace: "{{ _tenant_user }}-prod"
         deployments:
           - parasol-insurance
           - parasol-db
-      - namespace: "{{ tenant_user }}-parasol-payments"
+      - namespace: "{{ _tenant_user }}-parasol-payments"
         deployments:
           - payments-api
           - postgres
           - reporting-service
-      - namespace: "{{ tenant_user }}-parasol-web"
+      - namespace: "{{ _tenant_user }}-parasol-web"
         deployments:
           - backend
           - frontend
-      - namespace: "{{ tenant_user }}-showroom"
+      - namespace: "{{ _tenant_user }}-showroom"
         deployments:
           - showroom
 
     # Routes to HTTP-check: we only check the student-facing ones
     tenant_routes:
-      - namespace: "{{ tenant_user }}-showroom"
+      - namespace: "{{ _tenant_user }}-showroom"
         name: showroom
-      - namespace: "{{ tenant_user }}-dev"
+      - namespace: "{{ _tenant_user }}-dev"
         name: parasol-insurance
-      - namespace: "{{ tenant_user }}-prod"
+      - namespace: "{{ _tenant_user }}-prod"
         name: parasol-insurance
 
     # Track results
@@ -103,26 +109,46 @@
     - name: Validate required variables
       ansible.builtin.assert:
         that:
-          - ocp_api_url is defined
-          - ocp_admin_password is defined
-          - tenant_user is defined
-        fail_msg: "Missing required variable. Pass ocp_api_url, ocp_admin_password, and tenant_user via -e"
+          - ocp_api_url is defined or openshift_api_url is defined
+          - ocp_admin_password is defined or _use_sa_token | bool
+          - tenant_user is defined or user is defined
+        fail_msg: >-
+          Missing required variables.
+          CLI: pass ocp_api_url, ocp_admin_password, tenant_user via -e.
+          Showroom runner: openshift_api_url and user come from user_data.yml, auth via SA token.
 
-    - name: Login to OpenShift
+    - name: Read SA token
+      ansible.builtin.slurp:
+        src: "{{ _sa_token_path }}"
+      register: _sa_token_raw
+      when: _use_sa_token | bool
+
+    - name: Login to OpenShift with SA token
       ansible.builtin.command:
         cmd: >-
-          oc login {{ ocp_api_url }}
-          --username {{ ocp_admin_user }}
+          oc login {{ _api_url }}
+          --token {{ _sa_token_raw.content | b64decode }}
+          --insecure-skip-tls-verify
+      changed_when: false
+      no_log: true
+      when: _use_sa_token | bool
+
+    - name: Login to OpenShift with password
+      ansible.builtin.command:
+        cmd: >-
+          oc login {{ _api_url }}
+          --username admin
           --password {{ ocp_admin_password }}
           --insecure-skip-tls-verify
       changed_when: false
       no_log: true
+      when: not (_use_sa_token | bool)
 
     # =========================================================================
     # Check 1: Tenant namespaces exist
     # =========================================================================
 
-    - name: "Check namespaces exist for {{ tenant_user }}"
+    - name: "Check namespaces exist for {{ _tenant_user }}"
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Namespace
@@ -143,7 +169,7 @@
     # Check 2: ArgoCD apps are Synced + Healthy
     # =========================================================================
 
-    - name: "Check ArgoCD apps for {{ tenant_user }}"
+    - name: "Check ArgoCD apps for {{ _tenant_user }}"
       kubernetes.core.k8s_info:
         api_version: argoproj.io/v1alpha1
         kind: Application
@@ -171,7 +197,7 @@
     # Check 3: Key deployments have available replicas
     # =========================================================================
 
-    - name: "Check deployments for {{ tenant_user }}"
+    - name: "Check deployments for {{ _tenant_user }}"
       kubernetes.core.k8s_info:
         api_version: apps/v1
         kind: Deployment
@@ -200,7 +226,7 @@
     # =========================================================================
 
     # First, get the route hostnames
-    - name: "Get route URLs for {{ tenant_user }}"
+    - name: "Get route URLs for {{ _tenant_user }}"
       kubernetes.core.k8s_info:
         api_version: route.openshift.io/v1
         kind: Route
@@ -243,12 +269,12 @@
     # Summary
     # =========================================================================
 
-    - name: "Healthcheck PASSED for {{ tenant_user }}"
+    - name: "Healthcheck PASSED for {{ _tenant_user }}"
       ansible.builtin.debug:
-        msg: "All checks passed for tenant {{ tenant_user }}"
+        msg: "All checks passed for tenant {{ _tenant_user }}"
       when: healthcheck_failures | length == 0
 
-    - name: "Healthcheck FAILED for {{ tenant_user }}"
+    - name: "Healthcheck FAILED for {{ _tenant_user }}"
       ansible.builtin.fail:
         msg: |
           Healthcheck failed with {{ healthcheck_failures | length }} issue(s):
