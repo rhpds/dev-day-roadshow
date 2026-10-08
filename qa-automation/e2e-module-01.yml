@@ -1,0 +1,187 @@
+---
+# =============================================================================
+# E2E — Module 1: The Developer Experience
+# =============================================================================
+# Validates that a student can complete the Module 1 developer journey.
+# Checks the key outcomes of each section without replaying every UI step.
+# =============================================================================
+
+- name: "E2E — Module 1: The Developer Experience"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    _api_url: "{{ ocp_api_url | default(openshift_api_url) }}"
+    _tenant_user: "{{ tenant_user | default(user) }}"
+    _use_sa_token: "{{ ocp_admin_password is not defined }}"
+    e2e_failures: []
+
+  tasks:
+    - name: Validate required variables
+      ansible.builtin.assert:
+        that:
+          - ocp_api_url is defined or openshift_api_url is defined
+          - ocp_admin_password is defined or _use_sa_token | bool
+          - tenant_user is defined or user is defined
+        fail_msg: "Pass ocp_api_url, ocp_admin_password, and tenant_user via -e (or run in showroom runner)"
+
+    - name: Get runtime-automation SA token
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        namespace: "{{ _tenant_user }}-showroom"
+        name: runtime-automation-token
+      register: _ra_secret
+      when: _use_sa_token | bool
+
+    - name: Set k8s auth for runtime-automation SA
+      ansible.builtin.set_fact:
+        _k8s_host: "{{ _api_url }}"
+        _k8s_api_key: "{{ _ra_secret.resources[0].data.token | b64decode }}"
+        _k8s_validate_certs: false
+      when: _use_sa_token | bool
+      no_log: true
+
+    - name: Login to OpenShift with password
+      ansible.builtin.command:
+        cmd: >-
+          oc login {{ _api_url }}
+          --username admin
+          --password {{ ocp_admin_password }}
+          --insecure-skip-tls-verify
+      changed_when: false
+      no_log: true
+      when: not (_use_sa_token | bool)
+
+    - name: Set k8s auth for CLI mode
+      ansible.builtin.set_fact:
+        _k8s_host: ""
+        _k8s_api_key: ""
+        _k8s_validate_certs: true
+      when: not (_use_sa_token | bool)
+
+    # -----------------------------------------------------------------
+    # Section 1+2: Developer Hub + Golden Path Template
+    # -----------------------------------------------------------------
+    - name: "M1-S1: Check DevSpaces namespace exists"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: v1
+        kind: Namespace
+        name: "{{ _tenant_user }}-devspaces"
+      register: r_devspaces_ns
+
+    - name: Record DevSpaces namespace missing
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M1-S1: DevSpaces namespace ' + _tenant_user + '-devspaces not found'] }}
+      when: r_devspaces_ns.resources | length == 0
+
+    # -----------------------------------------------------------------
+    # Section 3: Build the Feature
+    # -----------------------------------------------------------------
+    - name: "M1-S3: Check parasol-insurance deployment in dev"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ _tenant_user }}-dev"
+        name: parasol-insurance
+      register: r_parasol_dev
+
+    - name: Record parasol-insurance dev deployment missing
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M1-S3: parasol-insurance deployment not found in ' + _tenant_user + '-dev'] }}
+      when: r_parasol_dev.resources | length == 0
+
+    # -----------------------------------------------------------------
+    # Section 4: Ship It
+    # -----------------------------------------------------------------
+    - name: "M1-S4: Check PipelineRuns exist in build namespace"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: tekton.dev/v1
+        kind: PipelineRun
+        namespace: "{{ _tenant_user }}-build"
+      register: r_pipeline_runs
+
+    - name: Record no PipelineRuns found
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M1-S4: No PipelineRuns found in ' + _tenant_user + '-build'] }}
+      when: r_pipeline_runs.resources | length == 0
+
+    # -----------------------------------------------------------------
+    # Section 6: Go Live
+    # -----------------------------------------------------------------
+    - name: "M1-S6: Check parasol-insurance deployment in prod"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ _tenant_user }}-prod"
+        name: parasol-insurance
+      register: r_parasol_prod
+
+    - name: Record parasol-insurance prod deployment missing
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M1-S6: parasol-insurance deployment not found in ' + _tenant_user + '-prod'] }}
+      when: r_parasol_prod.resources | length == 0
+
+    - name: "M1-S6: Check prod route responds"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: "{{ _tenant_user }}-prod"
+        name: parasol-insurance
+      register: r_prod_route
+
+    - name: HTTP check prod parasol-insurance
+      ansible.builtin.uri:
+        url: "https://{{ r_prod_route.resources[0].spec.host }}"
+        method: GET
+        validate_certs: false
+        status_code: [200]
+        timeout: 10
+      register: r_prod_http
+      when: r_prod_route.resources | length > 0
+      ignore_errors: true
+
+    - name: Record prod route not responding
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M1-S6: prod parasol-insurance route did not return HTTP 200'] }}
+      when: >-
+        r_prod_route.resources | length == 0
+        or (r_prod_http is defined and r_prod_http is failed)
+
+    # -----------------------------------------------------------------
+    # Summary
+    # -----------------------------------------------------------------
+    - name: "E2E Module 1 PASSED"
+      ansible.builtin.debug:
+        msg: "All Module 1 checks passed for {{ _tenant_user }}"
+      when: e2e_failures | length == 0
+
+    - name: "E2E Module 1 FAILED"
+      ansible.builtin.fail:
+        msg: |
+          Module 1 e2e failed with {{ e2e_failures | length }} issue(s):
+          {% for f in e2e_failures %}
+            - {{ f }}
+          {% endfor %}
+      when: e2e_failures | length > 0

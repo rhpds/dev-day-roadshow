@@ -1,0 +1,193 @@
+---
+# =============================================================================
+# E2E — Module 4: AI-Powered Troubleshooting
+# =============================================================================
+# Validates that the pre-seeded troubleshooting scenarios are in place:
+#   Exercise 1: broken NetworkPolicy in parasol-web
+#   Exercise 2: buggy reporting-service in parasol-payments
+#   Exercise 3: Perses operator available
+# =============================================================================
+
+- name: "E2E — Module 4: AI-Powered Troubleshooting"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    _api_url: "{{ ocp_api_url | default(openshift_api_url) }}"
+    _tenant_user: "{{ tenant_user | default(user) }}"
+    _use_sa_token: "{{ ocp_admin_password is not defined }}"
+    e2e_failures: []
+
+  tasks:
+    - name: Validate required variables
+      ansible.builtin.assert:
+        that:
+          - ocp_api_url is defined or openshift_api_url is defined
+          - ocp_admin_password is defined or _use_sa_token | bool
+          - tenant_user is defined or user is defined
+        fail_msg: "Pass ocp_api_url, ocp_admin_password, and tenant_user via -e (or run in showroom runner)"
+
+    - name: Get runtime-automation SA token
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        namespace: "{{ _tenant_user }}-showroom"
+        name: runtime-automation-token
+      register: _ra_secret
+      when: _use_sa_token | bool
+
+    - name: Set k8s auth for runtime-automation SA
+      ansible.builtin.set_fact:
+        _k8s_host: "{{ _api_url }}"
+        _k8s_api_key: "{{ _ra_secret.resources[0].data.token | b64decode }}"
+        _k8s_validate_certs: false
+      when: _use_sa_token | bool
+      no_log: true
+
+    - name: Login to OpenShift with password
+      ansible.builtin.command:
+        cmd: >-
+          oc login {{ _api_url }}
+          --username admin
+          --password {{ ocp_admin_password }}
+          --insecure-skip-tls-verify
+      changed_when: false
+      no_log: true
+      when: not (_use_sa_token | bool)
+
+    - name: Set k8s auth for CLI mode
+      ansible.builtin.set_fact:
+        _k8s_host: ""
+        _k8s_api_key: ""
+        _k8s_validate_certs: true
+      when: not (_use_sa_token | bool)
+
+    # -----------------------------------------------------------------
+    # Exercise 1: Parasol Web — frontend + backend deployed
+    # -----------------------------------------------------------------
+    - name: "M4-E1: Check parasol-web deployments exist"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ _tenant_user }}-parasol-web"
+      register: r_parasol_web
+
+    - name: Record parasol-web deployments missing
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M4-E1: No deployments found in ' + _tenant_user + '-parasol-web'] }}
+      when: r_parasol_web.resources | length == 0
+
+    - name: "M4-E1: Verify NetworkPolicy exists (the intentionally broken one)"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: networking.k8s.io/v1
+        kind: NetworkPolicy
+        namespace: "{{ _tenant_user }}-parasol-web"
+      register: r_netpol
+
+    - name: Record no NetworkPolicy found
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M4-E1: No NetworkPolicy in ' + _tenant_user + '-parasol-web — exercise 1 scenario missing'] }}
+      when: r_netpol.resources | length == 0
+
+    # -----------------------------------------------------------------
+    # Exercise 2: Parasol Payments — reporting-service deployed
+    # -----------------------------------------------------------------
+    - name: "M4-E2: Check reporting-service deployment"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ _tenant_user }}-parasol-payments"
+        name: reporting-service
+      register: r_reporting_svc
+
+    - name: Record reporting-service missing
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M4-E2: reporting-service deployment not found in ' + _tenant_user + '-parasol-payments'] }}
+      when: r_reporting_svc.resources | length == 0
+
+    - name: "M4-E2: Check PrometheusRule for PaymentErrorRateHigh alert"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: monitoring.coreos.com/v1
+        kind: PrometheusRule
+        namespace: "{{ _tenant_user }}-parasol-payments"
+      register: r_prom_rules
+      ignore_errors: true
+
+    - name: Record no PrometheusRule found
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M4-E2: No PrometheusRule in ' + _tenant_user + '-parasol-payments — alert scenario may be missing'] }}
+      when: r_prom_rules.resources | default([]) | length == 0
+
+    # -----------------------------------------------------------------
+    # Exercise 3: Perses operator available
+    # -----------------------------------------------------------------
+    - name: "M4-E3: Check Perses CRD installed"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: apiextensions.k8s.io/v1
+        kind: CustomResourceDefinition
+        name: persesdashboards.perses.dev
+      register: r_perses_crd
+      ignore_errors: true
+
+    - name: Record Perses CRD missing
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M4-E3: Perses CRD not found — dashboard exercise will not work'] }}
+      when: r_perses_crd.resources | default([]) | length == 0
+
+    # -----------------------------------------------------------------
+    # Lightspeed available
+    # -----------------------------------------------------------------
+    - name: "M4: Check Lightspeed deployment in openshift-lightspeed"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: apps/v1
+        kind: Deployment
+        namespace: openshift-lightspeed
+      register: r_lightspeed
+      ignore_errors: true
+
+    - name: Record Lightspeed not deployed
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M4: No deployments in openshift-lightspeed — Lightspeed may not be installed'] }}
+      when: r_lightspeed.resources | default([]) | length == 0
+
+    # -----------------------------------------------------------------
+    # Summary
+    # -----------------------------------------------------------------
+    - name: "E2E Module 4 PASSED"
+      ansible.builtin.debug:
+        msg: "All Module 4 checks passed for {{ _tenant_user }}"
+      when: e2e_failures | length == 0
+
+    - name: "E2E Module 4 FAILED"
+      ansible.builtin.fail:
+        msg: |
+          Module 4 e2e failed with {{ e2e_failures | length }} issue(s):
+          {% for f in e2e_failures %}
+            - {{ f }}
+          {% endfor %}
+      when: e2e_failures | length > 0

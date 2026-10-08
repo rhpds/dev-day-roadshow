@@ -1,0 +1,185 @@
+---
+# =============================================================================
+# E2E — Module 3: App Connectivity for AI
+# =============================================================================
+# Validates the key infrastructure and workloads for the 5-lab track.
+# Checks presence of Camel, Kafka, messaging, and Connectivity Link resources.
+# =============================================================================
+
+- name: "E2E — Module 3: App Connectivity for AI"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    _api_url: "{{ ocp_api_url | default(openshift_api_url) }}"
+    _tenant_user: "{{ tenant_user | default(user) }}"
+    _use_sa_token: "{{ ocp_admin_password is not defined }}"
+    e2e_failures: []
+
+  tasks:
+    - name: Validate required variables
+      ansible.builtin.assert:
+        that:
+          - ocp_api_url is defined or openshift_api_url is defined
+          - ocp_admin_password is defined or _use_sa_token | bool
+          - tenant_user is defined or user is defined
+        fail_msg: "Pass ocp_api_url, ocp_admin_password, and tenant_user via -e (or run in showroom runner)"
+
+    - name: Get runtime-automation SA token
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        namespace: "{{ _tenant_user }}-showroom"
+        name: runtime-automation-token
+      register: _ra_secret
+      when: _use_sa_token | bool
+
+    - name: Set k8s auth for runtime-automation SA
+      ansible.builtin.set_fact:
+        _k8s_host: "{{ _api_url }}"
+        _k8s_api_key: "{{ _ra_secret.resources[0].data.token | b64decode }}"
+        _k8s_validate_certs: false
+      when: _use_sa_token | bool
+      no_log: true
+
+    - name: Login to OpenShift with password
+      ansible.builtin.command:
+        cmd: >-
+          oc login {{ _api_url }}
+          --username admin
+          --password {{ ocp_admin_password }}
+          --insecure-skip-tls-verify
+      changed_when: false
+      no_log: true
+      when: not (_use_sa_token | bool)
+
+    - name: Set k8s auth for CLI mode
+      ansible.builtin.set_fact:
+        _k8s_host: ""
+        _k8s_api_key: ""
+        _k8s_validate_certs: true
+      when: not (_use_sa_token | bool)
+
+    # -----------------------------------------------------------------
+    # Lab 1: Ingest Service — Camel integration deployed
+    # -----------------------------------------------------------------
+    - name: "M3-L1: Check for Camel integrations in dev namespace"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ _tenant_user }}-dev"
+        label_selectors:
+          - app.kubernetes.io/managed-by=camel-k
+      register: r_camel_integrations
+      ignore_errors: true
+
+    - name: "M3-L1: Fallback — check any camel deployment"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ _tenant_user }}-dev"
+      register: r_dev_deployments
+      when: r_camel_integrations.resources | default([]) | length == 0
+
+    # -----------------------------------------------------------------
+    # Lab 2+3: Messaging — Kafka topics exist
+    # -----------------------------------------------------------------
+    - name: "M3-L3: Check Kafka namespace exists"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: v1
+        kind: Namespace
+        name: kafka
+      register: r_kafka_ns
+
+    - name: Record Kafka namespace missing
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M3-L3: kafka namespace not found — AMQ Streams may not be deployed'] }}
+      when: r_kafka_ns.resources | length == 0
+
+    - name: "M3-L3: Check KafkaTopics exist"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: kafka.strimzi.io/v1beta2
+        kind: KafkaTopic
+        namespace: kafka
+      register: r_kafka_topics
+      when: r_kafka_ns.resources | length > 0
+      ignore_errors: true
+
+    - name: Record no KafkaTopics
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M3-L3: No KafkaTopics found in kafka namespace'] }}
+      when:
+        - r_kafka_ns.resources | length > 0
+        - r_kafka_topics.resources | default([]) | length == 0
+
+    # -----------------------------------------------------------------
+    # Lab 2: Messaging platforms accessible
+    # -----------------------------------------------------------------
+    - name: "M3-L2: Check Rocket.Chat route"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: rocketchat
+      register: r_rocketchat_route
+      ignore_errors: true
+
+    - name: Record Rocket.Chat route missing
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M3-L2: No routes found in rocketchat namespace'] }}
+      when: r_rocketchat_route.resources | default([]) | length == 0
+
+    # -----------------------------------------------------------------
+    # Lab 5: Connectivity Link gateway exists
+    # -----------------------------------------------------------------
+    - name: "M3-L5: Check Connectivity Link CRDs installed"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: apiextensions.k8s.io/v1
+        kind: CustomResourceDefinition
+        name: gateways.gateway.networking.k8s.io
+      register: r_gateway_crd
+      ignore_errors: true
+
+    - name: Record Gateway CRD missing
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M3-L5: Gateway API CRD not found — Connectivity Link may not be installed'] }}
+      when: r_gateway_crd.resources | default([]) | length == 0
+
+    # -----------------------------------------------------------------
+    # Summary
+    # -----------------------------------------------------------------
+    - name: "E2E Module 3 PASSED"
+      ansible.builtin.debug:
+        msg: "All Module 3 checks passed for {{ _tenant_user }}"
+      when: e2e_failures | length == 0
+
+    - name: "E2E Module 3 FAILED"
+      ansible.builtin.fail:
+        msg: |
+          Module 3 e2e failed with {{ e2e_failures | length }} issue(s):
+          {% for f in e2e_failures %}
+            - {{ f }}
+          {% endfor %}
+      when: e2e_failures | length > 0
