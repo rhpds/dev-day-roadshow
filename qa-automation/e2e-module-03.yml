@@ -395,7 +395,7 @@
         body:
           name: "ai-support-{{ _guid }}"
         validate_certs: false
-        status_code: [200, 201]
+        status_code: [200, 201, 400]
         timeout: 15
       register: r_rc_create_channel
       ignore_errors: true
@@ -403,12 +403,51 @@
         - _rc_auth_token is defined
         - r_rc_channel.status | default(0) != 200
 
+    - name: "M3-M4: Join ai-support channel (needed when channel exists but user is not a member)"
+      ansible.builtin.uri:
+        url: "{{ _rocketchat_url }}/api/v1/channels.join"
+        method: POST
+        headers:
+          X-Auth-Token: "{{ _rc_auth_token }}"
+          X-User-Id: "{{ _rc_user_id }}"
+        body_format: json
+        body:
+          roomName: "ai-support-{{ _guid }}"
+        validate_certs: false
+        status_code: [200, 400]
+        timeout: 15
+      register: r_rc_join
+      ignore_errors: true
+      when:
+        - _rc_auth_token is defined
+        - r_rc_channel.status | default(0) != 200
+        - r_rc_create_channel.status | default(0) == 400
+
+    - name: "M3-M4: Re-query channel after join"
+      ansible.builtin.uri:
+        url: "{{ _rocketchat_url }}/api/v1/channels.info?roomName=ai-support-{{ _guid }}"
+        method: GET
+        headers:
+          X-Auth-Token: "{{ _rc_auth_token }}"
+          X-User-Id: "{{ _rc_user_id }}"
+        validate_certs: false
+        status_code: [200, 400, 404]
+        timeout: 15
+      register: r_rc_channel_requery
+      ignore_errors: true
+      when:
+        - _rc_auth_token is defined
+        - r_rc_channel.status | default(0) != 200
+        - r_rc_create_channel.status | default(0) == 400
+
     - name: Set RC channel ID
       ansible.builtin.set_fact:
         _rc_channel_id: >-
           {{ (r_rc_channel.json.channel._id | default(''))
              if (r_rc_channel.status | default(0) == 200)
-             else (r_rc_create_channel.json.channel._id | default('')) }}
+             else (r_rc_create_channel.json.channel._id | default(''))
+             if (r_rc_create_channel.status | default(0) in [200, 201])
+             else (r_rc_channel_requery.json.channel._id | default('')) }}
 
     - name: "LOAD M3-M4: Send AI agent messages (triggers LLM inference)"
       ansible.builtin.uri:
