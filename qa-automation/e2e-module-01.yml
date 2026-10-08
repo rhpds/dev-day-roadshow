@@ -27,7 +27,7 @@
     _litellm_key: "{{ litellm_virtual_key | default((lookup('file', '/user_data/user_data.yml') | from_yaml).litellm_virtual_key) }}"
     _gitlab_host: "gitlab-gitlab.{{ _ingress_domain }}"
     _gitlab_url: "https://gitlab-gitlab.{{ _ingress_domain }}"
-    _branch_name: "feature/claims-stats-e2e-{{ ansible_date_time.epoch }}"
+    _branch_name: "feature/claims-stats-e2e-{{ now(utc=true, fmt='%s') }}"
     e2e_failures: []
 
   tasks:
@@ -346,7 +346,7 @@
         validate_certs: false
         body_format: json
         body:
-          tag_name: "e2e-{{ ansible_date_time.epoch }}"
+          tag_name: "e2e-{{ now(utc=true, fmt='%s') }}"
           ref: main
           message: "E2E load test release"
         status_code: [201, 400]
