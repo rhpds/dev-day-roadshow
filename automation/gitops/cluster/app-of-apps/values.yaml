@@ -108,6 +108,8 @@ module3:
   enabled: true
   name: app-of-apps-m3
 
+jobAnsibleImage: quay.io/agnosticd/ee-multicloud:chained-2026-08-05
+
 developerHub:
   name: developer-hub
   namespace: rhdh
