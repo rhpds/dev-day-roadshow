@@ -30,7 +30,7 @@ spec:
     - "Build Apache Camel integrations for data ingestion with EDI-to-XML transformation and Service Interconnect"
     - "Bridge messaging platforms via Kafka event-driven architecture and build an agentic AI support bot with Camel and MaaS"
     - "Govern LLM access with Red Hat Connectivity Link (API key auth and token rate limiting)"
-    - "Use OpenShift Lightspeed to investigate application issues, diagnose alerts, request AI-assisted remediation, and build monitoring dashboards"
+    - "Use OpenShift 5's AI-powered agentic Lightspeed to interactively diagnose, monitor, and autonomously remediate application issues in the Parasol Insurance app"
     - "Analyze legacy workloads using the Migration Toolkit for Applications (MTA), accelerate code refactoring with Red Hat Developer Lightspeed, and deploy modern applications to Red Hat OpenShift"
   modules:              # [{id, title, duration_min}] — synced from content/ (source of truth); id is stable
     - {id: module-01, title: "The Developer Experience", duration_min: 85, status: complete}
@@ -42,7 +42,7 @@ spec:
     platform: "ocp"            # ocp | rhel-vms — determines which sizing fields apply
     topology: "shared-cluster" # shared-cluster | per-student | cnv-pool
     cloud_provider: cnv        # cnv | aws | troshka — cnv is default
-    max_concurrent_users: 30 # required if topology = shared-cluster
+    max_concurrent_users: 20 # required if topology = shared-cluster
 
     # --- OCP-specific fields (only when platform = ocp) ---
     ocp_version: "5.0"                 # migrated from OCP 4 to OCP 5
@@ -50,9 +50,9 @@ spec:
     control_plane_instance_count: 3    # 1 if sno, 3 if multinode
     control_plane_cpu: 16              # 32 if sno, 16 if multinode
     control_plane_ram_gb: 64           # 128 if sno, 64 if multinode
-    worker_count: 6                    # number of OCP worker nodes
-    worker_cpu: 16                     # vCPU per worker
-    worker_ram_gb: 32                  # RAM per worker in GB
+    worker_count: 4                    # number of OCP worker nodes
+    worker_cpu: 32                     # vCPU per worker
+    worker_ram_gb: 64                  # RAM per worker in GB
     worker_disk_gb: 100                # disk per worker in GB
 
     # --- VM-specific fields (only when platform = rhel-vms) ---
@@ -114,7 +114,7 @@ approval_checklist:
       - title: "App Connectivity for AI"
         overview: "Five-lab track covering Apache Camel data ingestion (EDI→XML), Service Interconnect for cross-cluster DB connectivity, Kafka-based messaging bridge (Matrix↔Rocket.Chat), agentic AI support bot with Camel+MaaS and MCP tool calling, and LLM governance via Connectivity Link (API key auth, token rate limiting)."
       - title: "AI-Powered Troubleshooting"
-        overview: "Three exercises using OpenShift Lightspeed MCP: investigate a NetworkPolicy timeout, diagnose a cascading DB connection exhaustion alert with rollback remediation, and build a Perses monitoring dashboard via natural language — no PromQL required."
+        overview: "Hands-on session covering interactive troubleshooting, live metric visualization, autonomous alert investigation, and human-in-the-loop remediation using OpenShift 5's agentic Lightspeed. Exercises progress from NetworkPolicy diagnostics to cascading multi-service failure remediation to building Perses monitoring dashboards — no PromQL required."
       - title: "AI-Driven App Modernization"
         overview: "Hands-on workshop covering AI-enabled application modernization: run migration analysis with the Migration Toolkit for Applications (MTA), perform AI-guided code refactoring to Quarkus using Red Hat Developer Lightspeed, and deploy modernized applications to OpenShift."
     rcars_overlap_pct: 93

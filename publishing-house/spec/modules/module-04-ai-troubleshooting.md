@@ -2,7 +2,7 @@
 
 ### Brief Overview
 
-Participants use OpenShift Lightspeed with MCP to investigate and resolve application issues through natural language conversation. Three exercises progress from a simple NetworkPolicy diagnostic to a cascading multi-service failure to building a custom monitoring dashboard — all without writing PromQL or using `oc` commands directly.
+A hands-on session covering interactive troubleshooting, live metric visualization, autonomous alert investigation, and human-in-the-loop remediation using OpenShift 5's agentic Lightspeed. Exercises progress from a simple NetworkPolicy diagnostic to a cascading multi-service failure to building a custom monitoring dashboard — all without writing PromQL or using `oc` commands directly.
 
 ### Audience and Time
 
@@ -11,7 +11,11 @@ Participants use OpenShift Lightspeed with MCP to investigate and resolve applic
 - **Prerequisites for this module:** Lab environment access with pre-deployed R&D applications (Parasol Web and Parasol Payments)
 - **Estimated duration:** 35 minutes (3 exercises)
 
-### Learning Objectives
+### Learning Objective
+
+Use OpenShift 5's AI-powered agentic Lightspeed to interactively diagnose, monitor, and autonomously remediate application issues in the Parasol Insurance app.
+
+### Detailed Objectives
 
 - Use OpenShift Lightspeed to investigate application issues through natural language
 - Diagnose network connectivity problems using AI-driven cluster introspection
