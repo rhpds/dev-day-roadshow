@@ -306,7 +306,7 @@
         namespace: kafka
         label_selectors:
           - strimzi.io/kind=Kafka
-          - strimzi.io/name=my-cluster-kafka
+          - strimzi.io/name=kafka-kafka
       register: r_kafka_pods
       when: r_kafka_ns.resources | length > 0
 
@@ -378,18 +378,37 @@
           X-Auth-Token: "{{ _rc_auth_token }}"
           X-User-Id: "{{ _rc_user_id }}"
         validate_certs: false
-        status_code: [200, 404]
+        status_code: [200, 400, 404]
         timeout: 15
       register: r_rc_channel
       ignore_errors: true
       when: _rc_auth_token is defined
 
+    - name: "M3-M4: Create ai-support channel if not found"
+      ansible.builtin.uri:
+        url: "{{ _rocketchat_url }}/api/v1/channels.create"
+        method: POST
+        headers:
+          X-Auth-Token: "{{ _rc_auth_token }}"
+          X-User-Id: "{{ _rc_user_id }}"
+        body_format: json
+        body:
+          name: "ai-support-{{ _guid }}"
+        validate_certs: false
+        status_code: [200, 201]
+        timeout: 15
+      register: r_rc_create_channel
+      ignore_errors: true
+      when:
+        - _rc_auth_token is defined
+        - r_rc_channel.status | default(0) != 200
+
     - name: Set RC channel ID
       ansible.builtin.set_fact:
-        _rc_channel_id: "{{ r_rc_channel.json.channel._id }}"
-      when:
-        - r_rc_channel is defined
-        - r_rc_channel.status | default(0) == 200
+        _rc_channel_id: >-
+          {{ (r_rc_channel.json.channel._id | default(''))
+             if (r_rc_channel.status | default(0) == 200)
+             else (r_rc_create_channel.json.channel._id | default('')) }}
 
     - name: "LOAD M3-M4: Send AI agent messages (triggers LLM inference)"
       ansible.builtin.uri:
