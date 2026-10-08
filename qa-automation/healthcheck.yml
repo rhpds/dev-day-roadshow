@@ -317,6 +317,66 @@
         - item is failed
 
     # =========================================================================
+    # Check 5: Lightspeed + MaaS reachability
+    # =========================================================================
+
+    - name: "Check OLSConfig exists"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: ols.openshift.io/v1alpha1
+        kind: OLSConfig
+        name: cluster
+      register: r_olsconfig
+      ignore_errors: true
+
+    - name: Record OLSConfig missing
+      ansible.builtin.set_fact:
+        healthcheck_failures: >-
+          {{ healthcheck_failures + ['OLSConfig cluster not found — Lightspeed not configured'] }}
+      when: r_olsconfig.resources | default([]) | length == 0
+
+    - name: "Check llm-credentials secret exists"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: v1
+        kind: Secret
+        namespace: openshift-lightspeed
+        name: llm-credentials
+      register: r_llm_creds
+      ignore_errors: true
+
+    - name: Record llm-credentials missing
+      ansible.builtin.set_fact:
+        healthcheck_failures: >-
+          {{ healthcheck_failures + ['llm-credentials secret not found in openshift-lightspeed — MaaS key missing'] }}
+      when: r_llm_creds.resources | default([]) | length == 0
+
+    - name: "Check Lightspeed app-server is ready"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: apps/v1
+        kind: Deployment
+        namespace: openshift-lightspeed
+        name: lightspeed-app-server
+      register: r_ls_deploy
+      ignore_errors: true
+
+    - name: Record Lightspeed not ready
+      ansible.builtin.set_fact:
+        healthcheck_failures: >-
+          {{ healthcheck_failures +
+             ['Lightspeed app-server has 0 available replicas'] }}
+      when: >-
+        r_ls_deploy.resources | default([]) | length == 0
+        or (r_ls_deploy.resources[0].status.availableReplicas | default(0)) < 1
+
+    # =========================================================================
     # Summary
     # =========================================================================
 
