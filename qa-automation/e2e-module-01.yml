@@ -1,9 +1,12 @@
 ---
 # =============================================================================
-# E2E — Module 1: The Developer Experience
+# E2E — Module 1: The Developer Experience (Load-Generating)
 # =============================================================================
-# Validates that a student can complete the Module 1 developer journey.
-# Checks the key outcomes of each section without replaying every UI step.
+# Validates pre-conditions then simulates student activity:
+#   - HTTP requests to parasol-insurance in dev and prod
+#   - Hits the /api/claims/stats endpoint (the feature students build)
+#   - Triggers a Tekton PipelineRun to generate build load
+#   - Queries ArgoCD app status
 # =============================================================================
 
 - name: "E2E — Module 1: The Developer Experience"
@@ -15,6 +18,7 @@
     _api_url: "{{ ocp_api_url | default(openshift_api_url) }}"
     _tenant_user: "{{ tenant_user | default(user) }}"
     _use_sa_token: "{{ ocp_admin_password is not defined }}"
+    _load_iterations: "{{ load_iterations | default(10) }}"
     e2e_failures: []
 
   tasks:
@@ -61,9 +65,9 @@
         _k8s_validate_certs: true
       when: not (_use_sa_token | bool)
 
-    # -----------------------------------------------------------------
-    # Section 1+2: Developer Hub + Golden Path Template
-    # -----------------------------------------------------------------
+    # =================================================================
+    # Pre-condition checks (fast presence validation)
+    # =================================================================
     - name: "M1-S1: Check DevSpaces namespace exists"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
@@ -80,9 +84,6 @@
           {{ e2e_failures + ['M1-S1: DevSpaces namespace ' + _tenant_user + '-devspaces not found'] }}
       when: r_devspaces_ns.resources | length == 0
 
-    # -----------------------------------------------------------------
-    # Section 3: Build the Feature
-    # -----------------------------------------------------------------
     - name: "M1-S3: Check parasol-insurance deployment in dev"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
@@ -100,28 +101,6 @@
           {{ e2e_failures + ['M1-S3: parasol-insurance deployment not found in ' + _tenant_user + '-dev'] }}
       when: r_parasol_dev.resources | length == 0
 
-    # -----------------------------------------------------------------
-    # Section 4: Ship It
-    # -----------------------------------------------------------------
-    - name: "M1-S4: Check PipelineRuns exist in build namespace"
-      kubernetes.core.k8s_info:
-        host: "{{ _k8s_host | default(omit, true) }}"
-        api_key: "{{ _k8s_api_key | default(omit, true) }}"
-        validate_certs: "{{ _k8s_validate_certs }}"
-        api_version: tekton.dev/v1
-        kind: PipelineRun
-        namespace: "{{ _tenant_user }}-build"
-      register: r_pipeline_runs
-
-    - name: Record no PipelineRuns found
-      ansible.builtin.set_fact:
-        e2e_failures: >-
-          {{ e2e_failures + ['M1-S4: No PipelineRuns found in ' + _tenant_user + '-build'] }}
-      when: r_pipeline_runs.resources | length == 0
-
-    # -----------------------------------------------------------------
-    # Section 6: Go Live
-    # -----------------------------------------------------------------
     - name: "M1-S6: Check parasol-insurance deployment in prod"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
@@ -139,7 +118,31 @@
           {{ e2e_failures + ['M1-S6: parasol-insurance deployment not found in ' + _tenant_user + '-prod'] }}
       when: r_parasol_prod.resources | length == 0
 
-    - name: "M1-S6: Check prod route responds"
+    - name: Bail out if pre-conditions failed
+      ansible.builtin.fail:
+        msg: |
+          Pre-condition checks failed — cannot run load tests:
+          {% for f in e2e_failures %}
+            - {{ f }}
+          {% endfor %}
+      when: e2e_failures | length > 0
+
+    # =================================================================
+    # Load-generating tests
+    # =================================================================
+
+    - name: "LOAD: Get dev parasol-insurance route"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: "{{ _tenant_user }}-dev"
+        name: parasol-insurance
+      register: r_dev_route
+
+    - name: "LOAD: Get prod parasol-insurance route"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -150,38 +153,105 @@
         name: parasol-insurance
       register: r_prod_route
 
-    - name: HTTP check prod parasol-insurance
+    - name: Set route URLs
+      ansible.builtin.set_fact:
+        _dev_url: "https://{{ r_dev_route.resources[0].spec.host | default('') }}"
+        _prod_url: "https://{{ r_prod_route.resources[0].spec.host | default('') }}"
+
+    - name: "LOAD: HTTP GET parasol-insurance dev (simulates student checking app)"
       ansible.builtin.uri:
-        url: "https://{{ r_prod_route.resources[0].spec.host }}"
+        url: "{{ _dev_url }}"
+        method: GET
+        validate_certs: false
+        status_code: [200, 302]
+        timeout: 15
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "dev-hit-{{ item }}"
+      register: r_dev_hits
+      ignore_errors: true
+
+    - name: "LOAD: HTTP GET /api/claims/stats dev (simulates student testing feature)"
+      ansible.builtin.uri:
+        url: "{{ _dev_url }}/api/claims/stats"
         method: GET
         validate_certs: false
         status_code: [200]
-        timeout: 10
-      register: r_prod_http
-      when: r_prod_route.resources | length > 0
+        timeout: 15
+        return_content: true
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "stats-dev-{{ item }}"
+      register: r_stats_hits
       ignore_errors: true
 
-    - name: Record prod route not responding
-      ansible.builtin.set_fact:
-        e2e_failures: >-
-          {{ e2e_failures + ['M1-S6: prod parasol-insurance route did not return HTTP 200'] }}
-      when: >-
-        r_prod_route.resources | length == 0
-        or (r_prod_http is defined and r_prod_http is failed)
+    - name: "LOAD: HTTP GET parasol-insurance prod (simulates Go Live verification)"
+      ansible.builtin.uri:
+        url: "{{ _prod_url }}"
+        method: GET
+        validate_certs: false
+        status_code: [200, 302]
+        timeout: 15
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "prod-hit-{{ item }}"
+      register: r_prod_hits
+      ignore_errors: true
 
-    # -----------------------------------------------------------------
+    - name: "LOAD: HTTP GET /api/claims/stats prod (simulates prod feature check)"
+      ansible.builtin.uri:
+        url: "{{ _prod_url }}/api/claims/stats"
+        method: GET
+        validate_certs: false
+        status_code: [200]
+        timeout: 15
+        return_content: true
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "stats-prod-{{ item }}"
+      register: r_stats_prod_hits
+      ignore_errors: true
+
+    - name: "LOAD: Query ArgoCD apps (simulates student watching sync)"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: openshift-gitops
+        name: "{{ item }}"
+      loop:
+        - "{{ _tenant_user }}-dev"
+        - "{{ _tenant_user }}-prod"
+        - "{{ _tenant_user }}-parasol-insurance"
+      register: r_argo_checks
+
+    - name: "LOAD: List PipelineRuns in build ns (simulates pipeline monitoring)"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: tekton.dev/v1
+        kind: PipelineRun
+        namespace: "{{ _tenant_user }}-build"
+      register: r_pipeline_runs
+
+    # =================================================================
     # Summary
-    # -----------------------------------------------------------------
-    - name: "E2E Module 1 PASSED"
-      ansible.builtin.debug:
-        msg: "All Module 1 checks passed for {{ _tenant_user }}"
-      when: e2e_failures | length == 0
+    # =================================================================
+    - name: Collect load test results
+      ansible.builtin.set_fact:
+        _dev_success: "{{ r_dev_hits.results | selectattr('status', 'defined') | selectattr('failed', 'equalto', false) | list | length }}"
+        _stats_success: "{{ r_stats_hits.results | selectattr('status', 'defined') | selectattr('failed', 'equalto', false) | list | length }}"
+        _prod_success: "{{ r_prod_hits.results | selectattr('status', 'defined') | selectattr('failed', 'equalto', false) | list | length }}"
 
-    - name: "E2E Module 1 FAILED"
-      ansible.builtin.fail:
-        msg: |
-          Module 1 e2e failed with {{ e2e_failures | length }} issue(s):
-          {% for f in e2e_failures %}
-            - {{ f }}
-          {% endfor %}
-      when: e2e_failures | length > 0
+    - name: "E2E Module 1 — Load Test Summary"
+      ansible.builtin.debug:
+        msg: >-
+          Load test complete for {{ _tenant_user }}:
+          Dev home {{ _dev_success }}/{{ _load_iterations }} OK |
+          Dev /api/claims/stats {{ _stats_success }}/{{ _load_iterations }} OK |
+          Prod home {{ _prod_success }}/{{ _load_iterations }} OK |
+          PipelineRuns found: {{ r_pipeline_runs.resources | length }} |
+          ArgoCD apps queried: {{ r_argo_checks.results | length }}

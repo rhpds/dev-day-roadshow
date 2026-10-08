@@ -1,11 +1,12 @@
 ---
 # =============================================================================
-# E2E — Module 4: AI-Powered Troubleshooting
+# E2E — Module 4: AI-Powered Troubleshooting (Load-Generating)
 # =============================================================================
-# Validates that the pre-seeded troubleshooting scenarios are in place:
-#   Exercise 1: broken NetworkPolicy in parasol-web
-#   Exercise 2: buggy reporting-service in parasol-payments
-#   Exercise 3: Perses operator available
+# Validates pre-conditions then simulates student activity:
+#   - HTTP requests to parasol-web frontend (expects timeouts from broken NetworkPolicy)
+#   - HTTP requests to payments-api (expects 500s from buggy reporting-service)
+#   - Queries Prometheus ServiceMonitors and pod status
+#   - Checks Perses CRD and Lightspeed deployment
 # =============================================================================
 
 - name: "E2E — Module 4: AI-Powered Troubleshooting"
@@ -17,6 +18,7 @@
     _api_url: "{{ ocp_api_url | default(openshift_api_url) }}"
     _tenant_user: "{{ tenant_user | default(user) }}"
     _use_sa_token: "{{ ocp_admin_password is not defined }}"
+    _load_iterations: "{{ load_iterations | default(5) }}"
     e2e_failures: []
 
   tasks:
@@ -175,19 +177,139 @@
           {{ e2e_failures + ['M4: No deployments in openshift-lightspeed — Lightspeed may not be installed'] }}
       when: r_lightspeed.resources | default([]) | length == 0
 
-    # -----------------------------------------------------------------
-    # Summary
-    # -----------------------------------------------------------------
-    - name: "E2E Module 4 PASSED"
-      ansible.builtin.debug:
-        msg: "All Module 4 checks passed for {{ _tenant_user }}"
-      when: e2e_failures | length == 0
-
-    - name: "E2E Module 4 FAILED"
+    - name: Bail out if pre-conditions failed
       ansible.builtin.fail:
         msg: |
-          Module 4 e2e failed with {{ e2e_failures | length }} issue(s):
+          Pre-condition checks failed — cannot run load tests:
           {% for f in e2e_failures %}
             - {{ f }}
           {% endfor %}
       when: e2e_failures | length > 0
+
+    # =================================================================
+    # LOAD SIMULATION — Student actions that generate real traffic
+    # =================================================================
+
+    # -----------------------------------------------------------------
+    # E1: Student checks frontend pod — hits parasol-web route
+    # -----------------------------------------------------------------
+    - name: "M4-E1: Get parasol-web frontend route"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: "{{ _tenant_user }}-parasol-web"
+      register: r_parasol_web_routes
+
+    - name: Set parasol-web frontend URL
+      ansible.builtin.set_fact:
+        _parasol_web_url: "https://{{ r_parasol_web_routes.resources[0].spec.host }}"
+      when: r_parasol_web_routes.resources | default([]) | length > 0
+
+    - name: "LOAD: HTTP GET parasol-web frontend (student refreshes to see timeout)"
+      ansible.builtin.uri:
+        url: "{{ _parasol_web_url }}"
+        method: GET
+        validate_certs: false
+        status_code: [200, 502, 503, 504]
+        timeout: 15
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "parasol-web-{{ item }}"
+      register: r_web_hits
+      ignore_errors: true
+      when: _parasol_web_url is defined
+
+    # -----------------------------------------------------------------
+    # E2: Student checks payments-api — hits payments route
+    # -----------------------------------------------------------------
+    - name: "M4-E2: Get payments-api route"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: "{{ _tenant_user }}-parasol-payments"
+      register: r_payments_routes
+
+    - name: Set payments-api URL
+      ansible.builtin.set_fact:
+        _payments_url: "https://{{ r_payments_routes.resources[0].spec.host }}"
+      when: r_payments_routes.resources | default([]) | length > 0
+
+    - name: "LOAD: HTTP GET payments-api (student checks error rates)"
+      ansible.builtin.uri:
+        url: "{{ _payments_url }}"
+        method: GET
+        validate_certs: false
+        status_code: [200, 500, 502, 503, 504]
+        timeout: 15
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "payments-{{ item }}"
+      register: r_payments_hits
+      ignore_errors: true
+      when: _payments_url is defined
+
+    - name: "LOAD: HTTP GET payments-api /health (student monitors recovery)"
+      ansible.builtin.uri:
+        url: "{{ _payments_url }}/health"
+        method: GET
+        validate_certs: false
+        status_code: [200, 404, 500, 502, 503]
+        timeout: 15
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "payments-health-{{ item }}"
+      register: r_payments_health_hits
+      ignore_errors: true
+      when: _payments_url is defined
+
+    # -----------------------------------------------------------------
+    # E3: Student queries Prometheus metrics (simulates dashboard building)
+    # -----------------------------------------------------------------
+    - name: "LOAD: Query ServiceMonitors in parasol-payments"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: monitoring.coreos.com/v1
+        kind: ServiceMonitor
+        namespace: "{{ _tenant_user }}-parasol-payments"
+      register: r_service_monitors
+      ignore_errors: true
+
+    - name: "LOAD: List pods in parasol-web (student checks pod status)"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: v1
+        kind: Pod
+        namespace: "{{ _tenant_user }}-parasol-web"
+      register: r_web_pods
+
+    - name: "LOAD: List pods in parasol-payments (student checks pod status)"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: v1
+        kind: Pod
+        namespace: "{{ _tenant_user }}-parasol-payments"
+      register: r_payments_pods
+
+    # -----------------------------------------------------------------
+    # Summary
+    # -----------------------------------------------------------------
+    - name: "E2E Module 4 — Load Test Summary"
+      ansible.builtin.debug:
+        msg: >-
+          Load test complete for {{ _tenant_user }}:
+          parasol-web hits: {{ r_web_hits.results | default([]) | selectattr('failed', 'equalto', false) | list | length if r_web_hits is defined else 'skipped' }}/{{ _load_iterations }} |
+          payments-api hits: {{ r_payments_hits.results | default([]) | selectattr('failed', 'equalto', false) | list | length if r_payments_hits is defined else 'skipped' }}/{{ _load_iterations }} |
+          Web pods: {{ r_web_pods.resources | default([]) | length }} |
+          Payments pods: {{ r_payments_pods.resources | default([]) | length }}

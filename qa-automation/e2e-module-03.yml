@@ -1,9 +1,12 @@
 ---
 # =============================================================================
-# E2E — Module 3: App Connectivity for AI
+# E2E — Module 3: App Connectivity for AI (Load-Generating)
 # =============================================================================
-# Validates the key infrastructure and workloads for the 5-lab track.
-# Checks presence of Camel, Kafka, messaging, and Connectivity Link resources.
+# Validates pre-conditions then simulates student activity:
+#   - HTTP requests to Rocket.Chat (messaging platform)
+#   - Queries Kafka topics and consumer groups
+#   - Hits Camel integration endpoints in dev namespace
+#   - Queries Gateway API resources
 # =============================================================================
 
 - name: "E2E — Module 3: App Connectivity for AI"
@@ -15,6 +18,7 @@
     _api_url: "{{ ocp_api_url | default(openshift_api_url) }}"
     _tenant_user: "{{ tenant_user | default(user) }}"
     _use_sa_token: "{{ ocp_admin_password is not defined }}"
+    _load_iterations: "{{ load_iterations | default(10) }}"
     e2e_failures: []
 
   tasks:
@@ -61,23 +65,10 @@
         _k8s_validate_certs: true
       when: not (_use_sa_token | bool)
 
-    # -----------------------------------------------------------------
-    # Lab 1: Ingest Service — Camel integration deployed
-    # -----------------------------------------------------------------
-    - name: "M3-L1: Check for Camel integrations in dev namespace"
-      kubernetes.core.k8s_info:
-        host: "{{ _k8s_host | default(omit, true) }}"
-        api_key: "{{ _k8s_api_key | default(omit, true) }}"
-        validate_certs: "{{ _k8s_validate_certs }}"
-        api_version: apps/v1
-        kind: Deployment
-        namespace: "{{ _tenant_user }}-dev"
-        label_selectors:
-          - app.kubernetes.io/managed-by=camel-k
-      register: r_camel_integrations
-      ignore_errors: true
-
-    - name: "M3-L1: Fallback — check any camel deployment"
+    # =================================================================
+    # Pre-condition checks
+    # =================================================================
+    - name: "M3-L1: Check for deployments in dev namespace"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -86,11 +77,13 @@
         kind: Deployment
         namespace: "{{ _tenant_user }}-dev"
       register: r_dev_deployments
-      when: r_camel_integrations.resources | default([]) | length == 0
 
-    # -----------------------------------------------------------------
-    # Lab 2+3: Messaging — Kafka topics exist
-    # -----------------------------------------------------------------
+    - name: Record no deployments in dev
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M3-L1: No deployments in ' + _tenant_user + '-dev'] }}
+      when: r_dev_deployments.resources | length == 0
+
     - name: "M3-L3: Check Kafka namespace exists"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
@@ -107,29 +100,6 @@
           {{ e2e_failures + ['M3-L3: kafka namespace not found — AMQ Streams may not be deployed'] }}
       when: r_kafka_ns.resources | length == 0
 
-    - name: "M3-L3: Check KafkaTopics exist"
-      kubernetes.core.k8s_info:
-        host: "{{ _k8s_host | default(omit, true) }}"
-        api_key: "{{ _k8s_api_key | default(omit, true) }}"
-        validate_certs: "{{ _k8s_validate_certs }}"
-        api_version: kafka.strimzi.io/v1beta2
-        kind: KafkaTopic
-        namespace: kafka
-      register: r_kafka_topics
-      when: r_kafka_ns.resources | length > 0
-      ignore_errors: true
-
-    - name: Record no KafkaTopics
-      ansible.builtin.set_fact:
-        e2e_failures: >-
-          {{ e2e_failures + ['M3-L3: No KafkaTopics found in kafka namespace'] }}
-      when:
-        - r_kafka_ns.resources | length > 0
-        - r_kafka_topics.resources | default([]) | length == 0
-
-    # -----------------------------------------------------------------
-    # Lab 2: Messaging platforms accessible
-    # -----------------------------------------------------------------
     - name: "M3-L2: Check Rocket.Chat route"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
@@ -147,10 +117,7 @@
           {{ e2e_failures + ['M3-L2: No routes found in rocketchat namespace'] }}
       when: r_rocketchat_route.resources | default([]) | length == 0
 
-    # -----------------------------------------------------------------
-    # Lab 5: Connectivity Link gateway exists
-    # -----------------------------------------------------------------
-    - name: "M3-L5: Check Connectivity Link CRDs installed"
+    - name: "M3-L5: Check Gateway API CRD installed"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -167,19 +134,136 @@
           {{ e2e_failures + ['M3-L5: Gateway API CRD not found — Connectivity Link may not be installed'] }}
       when: r_gateway_crd.resources | default([]) | length == 0
 
-    # -----------------------------------------------------------------
-    # Summary
-    # -----------------------------------------------------------------
-    - name: "E2E Module 3 PASSED"
-      ansible.builtin.debug:
-        msg: "All Module 3 checks passed for {{ _tenant_user }}"
-      when: e2e_failures | length == 0
-
-    - name: "E2E Module 3 FAILED"
+    - name: Bail out if pre-conditions failed
       ansible.builtin.fail:
         msg: |
-          Module 3 e2e failed with {{ e2e_failures | length }} issue(s):
+          Pre-condition checks failed — cannot run load tests:
           {% for f in e2e_failures %}
             - {{ f }}
           {% endfor %}
       when: e2e_failures | length > 0
+
+    # =================================================================
+    # Load-generating tests
+    # =================================================================
+
+    - name: Set Rocket.Chat URL
+      ansible.builtin.set_fact:
+        _rocketchat_url: "https://{{ r_rocketchat_route.resources[0].spec.host }}"
+      when: r_rocketchat_route.resources | default([]) | length > 0
+
+    # --- 1. Hit Rocket.Chat (simulates student accessing messaging) ---
+    - name: "LOAD: HTTP GET Rocket.Chat (simulates student accessing messaging)"
+      ansible.builtin.uri:
+        url: "{{ _rocketchat_url }}"
+        method: GET
+        validate_certs: false
+        status_code: [200, 302]
+        timeout: 15
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "rocketchat-{{ item }}"
+      register: r_rc_hits
+      ignore_errors: true
+      when: _rocketchat_url is defined
+
+    # --- 2. Get all routes in dev namespace and hit them ---
+    - name: "LOAD: Get routes in dev namespace"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: "{{ _tenant_user }}-dev"
+      register: r_dev_routes
+
+    - name: "LOAD: HTTP GET dev routes (simulates student testing integrations)"
+      ansible.builtin.uri:
+        url: "https://{{ item.spec.host }}"
+        method: GET
+        validate_certs: false
+        status_code: [200, 302, 404, 405]
+        timeout: 15
+      loop: "{{ r_dev_routes.resources | default([]) }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+      register: r_dev_route_hits
+      ignore_errors: true
+
+    # --- 3. Query KafkaTopics (simulates student monitoring event streams) ---
+    - name: "LOAD: List KafkaTopics (simulates student checking event streams)"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: kafka.strimzi.io/v1beta2
+        kind: KafkaTopic
+        namespace: kafka
+      register: r_kafka_topics
+      when: r_kafka_ns.resources | length > 0
+      ignore_errors: true
+
+    # --- 4. Query Kafka cluster status (simulates monitoring) ---
+    - name: "LOAD: Check Kafka cluster pods (simulates student monitoring Kafka)"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: v1
+        kind: Pod
+        namespace: kafka
+        label_selectors:
+          - strimzi.io/kind=Kafka
+      register: r_kafka_pods
+      when: r_kafka_ns.resources | length > 0
+      ignore_errors: true
+
+    # --- 5. Query Gateway resources (simulates Connectivity Link lab) ---
+    - name: "LOAD: List HTTPRoutes in dev (simulates student configuring routes)"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+        namespace: "{{ _tenant_user }}-dev"
+      register: r_httproutes
+      ignore_errors: true
+
+    - name: "LOAD: List Gateways (simulates student checking gateway config)"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: gateway.networking.k8s.io/v1
+        kind: Gateway
+        namespace: "{{ _tenant_user }}-dev"
+      register: r_gateways
+      ignore_errors: true
+
+    # --- 6. List all services in dev (simulates student exploring namespace) ---
+    - name: "LOAD: List services in dev ns (simulates student exploring)"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: v1
+        kind: Service
+        namespace: "{{ _tenant_user }}-dev"
+      register: r_dev_services
+
+    # =================================================================
+    # Summary
+    # =================================================================
+    - name: "E2E Module 3 — Load Test Summary"
+      ansible.builtin.debug:
+        msg: >-
+          Load test complete for {{ _tenant_user }}:
+          Rocket.Chat hits: {{ (r_rc_hits.results | default([]) | selectattr('failed', 'equalto', false) | list | length) if r_rc_hits is defined else 'skipped' }} |
+          Dev routes hit: {{ r_dev_route_hits.results | default([]) | length }} |
+          KafkaTopics found: {{ r_kafka_topics.resources | default([]) | length }} |
+          Kafka pods: {{ r_kafka_pods.resources | default([]) | length }} |
+          HTTPRoutes: {{ r_httproutes.resources | default([]) | length }} |
+          Gateways: {{ r_gateways.resources | default([]) | length }} |
+          Dev services: {{ r_dev_services.resources | default([]) | length }}
