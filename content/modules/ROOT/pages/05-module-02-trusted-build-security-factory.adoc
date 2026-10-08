@@ -1,0 +1,26 @@
+= Module 2: The Trusted Build & Security Factory
+include::partial$_attributes.adoc[]
+:imagesdir: ../assets/images
+
+// Placeholder — content authored by James Falkner (pending)
+
+== Overview
+
+Secure the software supply chain from code to production by implementing automated compliance, security guardrails, and verifiable trust artifacts (SLSA Level 3) using Red Hat Advanced Developer Suite tools.
+
+== Learning Objectives
+
+* Implement security guardrails directly within CI/CD pipelines
+* Generate and verify trust artifacts (SLSA Level 3) using Red Hat Trusted Software Supply Chain tools
+* Utilize Red Hat Developer Hub (RHDH) to reduce cognitive overload via automated compliance
+* Manage secure lifecycles using the TAS, TPA, and TSF stack
+
+[#section-1]
+== Section 1: Coming soon
+
+_Content pending from content authors._
+
+[#section-2]
+== Section 2: Coming soon
+
+_Content pending from content authors._

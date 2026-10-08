@@ -13,6 +13,8 @@
 ** xref:03-module-01-developer-experience.adoc#section-6[Section 6: Go live]
 
 // * xref:module-03/intro/intro.1.adoc[Module 3: Application Foundations]
+* xref:05-module-02-trusted-build-security-factory.adoc[Module 2: The Trusted Build & Security Factory]
+
 * xref:module-03/index.adoc[Module 3: App Connectivity for AI]
 // ** xref:module-03/index.adoc[Home]
 ** xref:module-03/intro/intro.1.adoc[Introduction]
@@ -53,3 +55,9 @@
 ** xref:04-module-04-ai-powered-troubleshooting.adoc#exercise-1[Exercise 1: Investigate a timeout issue]
 ** xref:04-module-04-ai-powered-troubleshooting.adoc#exercise-2[Exercise 2: Diagnose and fix a critical alert]
 ** xref:04-module-04-ai-powered-troubleshooting.adoc#exercise-3[Exercise 3: Build a custom monitoring dashboard]
+
+* xref:06-module-05-ai-driven-app-modernization.adoc[Module 5: AI-Driven App Modernization]
+** xref:06-module-05-ai-driven-app-modernization.adoc#section-1[Phase 1: Code Analysis]
+** xref:06-module-05-ai-driven-app-modernization.adoc#section-2[Phase 2: AI-Guided Refactoring]
+** xref:06-module-05-ai-driven-app-modernization.adoc#section-3[Phase 3: Accelerate Modernization with Agents]
+** xref:06-module-05-ai-driven-app-modernization.adoc#section-4[Phase 4: OpenShift Deployment]
