@@ -482,6 +482,149 @@
       register: r_payments_pods
 
     # =================================================================
+    # LIGHTSPEED + MaaS — reachability and load test
+    # =================================================================
+
+    - name: "M4-LS: Validate OLSConfig references MaaS endpoint"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: ols.openshift.io/v1alpha1
+        kind: OLSConfig
+        name: cluster
+      register: r_olsconfig
+      ignore_errors: true
+
+    - name: "M4-LS: Extract MaaS URL and model from OLSConfig"
+      ansible.builtin.set_fact:
+        _ls_maas_url: "{{ r_olsconfig.resources[0].spec.llm.providers[0].url | default('') }}"
+        _ls_model: "{{ r_olsconfig.resources[0].spec.ols.defaultModel | default('') }}"
+        _ls_provider: "{{ r_olsconfig.resources[0].spec.ols.defaultProvider | default('') }}"
+      when: r_olsconfig.resources | default([]) | length > 0
+
+    - name: "M4-LS: Verify llm-credentials secret exists"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: v1
+        kind: Secret
+        namespace: openshift-lightspeed
+        name: llm-credentials
+      register: r_llm_creds
+      ignore_errors: true
+
+    - name: Record llm-credentials missing
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M4-LS: llm-credentials secret not found in openshift-lightspeed'] }}
+      when: r_llm_creds.resources | default([]) | length == 0
+
+    - name: "M4-LS: Check Lightspeed readiness from frontend pod"
+      kubernetes.core.k8s_exec:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        namespace: "{{ _tenant_user }}-parasol-web"
+        pod: "{{ r_frontend_pods.resources[0].metadata.name }}"
+        command: >-
+          sh -c 'wget -qO- --no-check-certificate
+          https://lightspeed-app-server.openshift-lightspeed.svc.cluster.local:8443/readiness
+          2>&1 || true'
+      register: r_ls_readiness
+      ignore_errors: true
+      when: r_frontend_pods.resources | default([]) | length > 0
+
+    - name: Record Lightspeed not reachable
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['M4-LS: Lightspeed readiness check failed from tenant pod'] }}
+      when: >-
+        r_ls_readiness is failed
+        or (r_ls_readiness.stdout | default('') is not search('ready.*true'))
+
+    - name: "M4-LS: Generate SA token for Lightspeed API"
+      ansible.builtin.command:
+        cmd: >-
+          oc create token runtime-automation
+          -n {{ _tenant_user }}-showroom
+          {% if _use_sa_token | bool %}
+          --server={{ _api_url }}
+          --token={{ _k8s_api_key }}
+          --insecure-skip-tls-verify
+          {% endif %}
+      register: r_ls_token
+      ignore_errors: true
+      no_log: true
+
+    - name: "LOAD M4-LS: Send Lightspeed queries (exercises MaaS inference)"
+      kubernetes.core.k8s_exec:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        namespace: "{{ _tenant_user }}-parasol-web"
+        pod: "{{ r_frontend_pods.resources[0].metadata.name }}"
+        command: >-
+          sh -c 'wget -qO- --no-check-certificate
+          --header="Content-Type: application/json"
+          --header="Authorization: Bearer {{ r_ls_token.stdout }}"
+          --post-data='"'"'{{ item.body | to_json }}'"'"'
+          https://lightspeed-app-server.openshift-lightspeed.svc.cluster.local:8443/v1/query
+          2>&1 || true'
+      loop:
+        - body:
+            query: "What pods are running in the {{ _tenant_user }}-parasol-web namespace?"
+            conversation_id: "{{ 99999999 | random | to_uuid }}"
+            model: "{{ _ls_model | default('qwen38-27b') }}"
+            provider: "{{ _ls_provider | default('openai') }}"
+        - body:
+            query: "Are there any network policies blocking traffic in {{ _tenant_user }}-parasol-web?"
+            conversation_id: "{{ 99999998 | random | to_uuid }}"
+            model: "{{ _ls_model | default('qwen38-27b') }}"
+            provider: "{{ _ls_provider | default('openai') }}"
+        - body:
+            query: "Check the alerts firing in {{ _tenant_user }}-parasol-payments and tell me the root cause"
+            conversation_id: "{{ 99999997 | random | to_uuid }}"
+            model: "{{ _ls_model | default('qwen38-27b') }}"
+            provider: "{{ _ls_provider | default('openai') }}"
+      loop_control:
+        label: "ls-query-{{ ansible_loop.index }}"
+        extended: true
+      register: r_ls_queries
+      ignore_errors: true
+      when:
+        - r_frontend_pods.resources | default([]) | length > 0
+        - r_ls_token is defined
+        - r_ls_token is not failed
+      timeout: 120
+
+    - name: "LOAD M4-LS: Repeat Lightspeed queries (stress MaaS throughput)"
+      kubernetes.core.k8s_exec:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        namespace: "{{ _tenant_user }}-parasol-web"
+        pod: "{{ r_frontend_pods.resources[0].metadata.name }}"
+        command: >-
+          sh -c 'wget -qO- --no-check-certificate
+          --header="Content-Type: application/json"
+          --header="Authorization: Bearer {{ r_ls_token.stdout }}"
+          --post-data='"'"'{{ {"query": "List all deployments in " + _tenant_user + "-parasol-payments and their replica counts", "conversation_id": (item | to_uuid), "model": _ls_model | default("qwen38-27b"), "provider": _ls_provider | default("openai")} | to_json }}'"'"'
+          https://lightspeed-app-server.openshift-lightspeed.svc.cluster.local:8443/v1/query
+          2>&1 || true'
+      loop: "{{ range(1, (_load_iterations | int) + 1) | list }}"
+      loop_control:
+        label: "ls-load-{{ item }}"
+      register: r_ls_load
+      ignore_errors: true
+      when:
+        - r_frontend_pods.resources | default([]) | length > 0
+        - r_ls_token is defined
+        - r_ls_token is not failed
+      timeout: 120
+
+    # =================================================================
     # Summary
     # =================================================================
     - name: "E2E Module 4 — Student Workflow Summary"
@@ -495,5 +638,9 @@
           E2 reporting-service rollback: {{ 'done' if ((r_rollback_sa is defined and r_rollback_sa is not failed) or (r_rollback_cli is defined and r_rollback_cli is not failed)) else 'skipped/failed' }} |
           E2 payments-api AFTER rollback: {{ r_payments_after.results | default([]) | length }}/{{ _load_iterations }} requests |
           E3 PromQL queries: {{ 'executed' if r_prom_request_rate is defined else 'skipped' }} |
+          LS readiness: {{ 'ok' if (r_ls_readiness is defined and r_ls_readiness is not failed and r_ls_readiness.stdout | default('') is search('ready.*true')) else 'failed/skipped' }} |
+          LS MaaS URL: {{ _ls_maas_url | default('not found') }} |
+          LS queries: {{ r_ls_queries.results | default([]) | selectattr('rc', 'defined') | selectattr('rc', 'equalto', 0) | list | length }}/3 ok |
+          LS load: {{ r_ls_load.results | default([]) | selectattr('rc', 'defined') | selectattr('rc', 'equalto', 0) | list | length }}/{{ _load_iterations }} ok |
           Web pods: {{ r_web_pods.resources | default([]) | length }} |
           Payments pods: {{ r_payments_pods.resources | default([]) | length }}
