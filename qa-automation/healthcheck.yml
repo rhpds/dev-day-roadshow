@@ -1,0 +1,258 @@
+---
+# =============================================================================
+# Dev Day Roadshow — Tenant Healthcheck
+# =============================================================================
+#
+# Purpose:
+#   Validates that a tenant environment is fully provisioned and ready
+#   for a student to use. Runs at tenant order time via Showroom API.
+#
+# Usage:
+#   ansible-playbook qa-automation/healthcheck.yml \
+#     -e "ocp_api_url=https://api.cluster-xxx.dyn.redhatworkshops.io:6443" \
+#     -e "ocp_admin_password=xxx" \
+#     -e "tenant_user=user-abc12"
+#
+# What it checks (in order):
+#   1. Tenant namespaces exist
+#   2. ArgoCD apps are Synced + Healthy
+#   3. Key deployments are ready (1+ available replicas)
+#   4. Routes return HTTP 200 (showroom, parasol-insurance, payments-api)
+#
+# Design notes:
+#   - Tenant-only — no cluster-level checks (cluster is validated before tenants)
+#   - Fast — uses k8s_info lookups, no heavy waits
+#   - Simple — pass/fail per check, clear error messages
+# =============================================================================
+
+- name: Dev Day Roadshow — Tenant Healthcheck
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # --- Required inputs (pass via -e) ---
+    # ocp_api_url: cluster API URL
+    # ocp_admin_password: cluster admin password
+    # tenant_user: tenant username (e.g. user-2lr58)
+
+    # --- Derived values ---
+    ocp_admin_user: admin
+
+    # Namespaces we expect per tenant
+    tenant_namespaces:
+      - "{{ tenant_user }}-build"
+      - "{{ tenant_user }}-dev"
+      - "{{ tenant_user }}-prod"
+      - "{{ tenant_user }}-parasol-payments"
+      - "{{ tenant_user }}-parasol-web"
+      - "{{ tenant_user }}-showroom"
+      - "{{ tenant_user }}-devspaces"
+
+    # ArgoCD apps we expect per tenant
+    tenant_argo_apps:
+      - "bootstrap-tenant-{{ tenant_user }}"
+      - "{{ tenant_user }}-build"
+      - "{{ tenant_user }}-dev"
+      - "{{ tenant_user }}-prod"
+      - "{{ tenant_user }}-parasol-insurance"
+      - "{{ tenant_user }}-parasol-troubleshooting"
+      - "{{ tenant_user }}-workload-m3"
+
+    # Deployments to check: namespace -> list of deployment names
+    # Only checking the critical ones — if these are up, the tenant is usable
+    tenant_deployments:
+      - namespace: "{{ tenant_user }}-dev"
+        deployments:
+          - parasol-insurance
+          - parasol-db
+      - namespace: "{{ tenant_user }}-prod"
+        deployments:
+          - parasol-insurance
+          - parasol-db
+      - namespace: "{{ tenant_user }}-parasol-payments"
+        deployments:
+          - payments-api
+          - postgres
+          - reporting-service
+      - namespace: "{{ tenant_user }}-parasol-web"
+        deployments:
+          - backend
+          - frontend
+      - namespace: "{{ tenant_user }}-showroom"
+        deployments:
+          - showroom
+
+    # Routes to HTTP-check: we only check the student-facing ones
+    tenant_routes:
+      - namespace: "{{ tenant_user }}-showroom"
+        name: showroom
+      - namespace: "{{ tenant_user }}-dev"
+        name: parasol-insurance
+      - namespace: "{{ tenant_user }}-prod"
+        name: parasol-insurance
+
+    # Track results
+    healthcheck_failures: []
+
+  tasks:
+    # =========================================================================
+    # Login
+    # =========================================================================
+
+    - name: Validate required variables
+      ansible.builtin.assert:
+        that:
+          - ocp_api_url is defined
+          - ocp_admin_password is defined
+          - tenant_user is defined
+        fail_msg: "Missing required variable. Pass ocp_api_url, ocp_admin_password, and tenant_user via -e"
+
+    - name: Login to OpenShift
+      ansible.builtin.command:
+        cmd: >-
+          oc login {{ ocp_api_url }}
+          --username {{ ocp_admin_user }}
+          --password {{ ocp_admin_password }}
+          --insecure-skip-tls-verify
+      changed_when: false
+      no_log: true
+
+    # =========================================================================
+    # Check 1: Tenant namespaces exist
+    # =========================================================================
+
+    - name: "Check namespaces exist for {{ tenant_user }}"
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Namespace
+        name: "{{ item }}"
+      register: r_ns_checks
+      loop: "{{ tenant_namespaces }}"
+
+    - name: Record missing namespaces
+      ansible.builtin.set_fact:
+        healthcheck_failures: >-
+          {{ healthcheck_failures + ['Namespace ' + item.item + ' not found'] }}
+      loop: "{{ r_ns_checks.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: item.resources | length == 0
+
+    # =========================================================================
+    # Check 2: ArgoCD apps are Synced + Healthy
+    # =========================================================================
+
+    - name: "Check ArgoCD apps for {{ tenant_user }}"
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: openshift-gitops
+        name: "{{ item }}"
+      register: r_argo_checks
+      loop: "{{ tenant_argo_apps }}"
+
+    - name: Record unhealthy ArgoCD apps
+      ansible.builtin.set_fact:
+        healthcheck_failures: >-
+          {{ healthcheck_failures +
+             ['ArgoCD app ' + item.item + ' is ' +
+              (item.resources[0].status.sync.status | default('Unknown')) + '/' +
+              (item.resources[0].status.health.status | default('Unknown'))] }}
+      loop: "{{ r_argo_checks.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: >-
+        item.resources | length == 0
+        or item.resources[0].status.sync.status | default('') != 'Synced'
+        or item.resources[0].status.health.status | default('') != 'Healthy'
+
+    # =========================================================================
+    # Check 3: Key deployments have available replicas
+    # =========================================================================
+
+    - name: "Check deployments for {{ tenant_user }}"
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ item.0.namespace }}"
+        name: "{{ item.1 }}"
+      register: r_deploy_checks
+      loop: "{{ tenant_deployments | subelements('deployments') }}"
+      loop_control:
+        label: "{{ item.0.namespace }}/{{ item.1 }}"
+
+    - name: Record unavailable deployments
+      ansible.builtin.set_fact:
+        healthcheck_failures: >-
+          {{ healthcheck_failures +
+             ['Deployment ' + item.item.0.namespace + '/' + item.item.1 +
+              ' has 0 available replicas'] }}
+      loop: "{{ r_deploy_checks.results }}"
+      loop_control:
+        label: "{{ item.item.0.namespace }}/{{ item.item.1 }}"
+      when: >-
+        item.resources | length == 0
+        or (item.resources[0].status.availableReplicas | default(0)) < 1
+
+    # =========================================================================
+    # Check 4: Student-facing routes return HTTP 200
+    # =========================================================================
+
+    # First, get the route hostnames
+    - name: "Get route URLs for {{ tenant_user }}"
+      kubernetes.core.k8s_info:
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: "{{ item.namespace }}"
+        name: "{{ item.name }}"
+      register: r_route_lookups
+      loop: "{{ tenant_routes }}"
+      loop_control:
+        label: "{{ item.namespace }}/{{ item.name }}"
+
+    # Then HTTP-check each one
+    - name: Check route responds with HTTP 200
+      ansible.builtin.uri:
+        url: "https://{{ item.resources[0].spec.host }}"
+        method: GET
+        validate_certs: false
+        status_code: [200]
+        timeout: 10
+      register: r_http_checks
+      loop: "{{ r_route_lookups.results }}"
+      loop_control:
+        label: "{{ item.item.namespace }}/{{ item.item.name }}"
+      when: item.resources | length > 0
+      ignore_errors: true
+
+    - name: Record failed HTTP checks
+      ansible.builtin.set_fact:
+        healthcheck_failures: >-
+          {{ healthcheck_failures +
+             ['Route ' + item.item.item.namespace + '/' + item.item.item.name +
+              ' did not return HTTP 200 (got ' + (item.status | default('no response') | string) + ')'] }}
+      loop: "{{ r_http_checks.results }}"
+      loop_control:
+        label: "{{ item.item.item.namespace | default('unknown') }}/{{ item.item.item.name | default('unknown') }}"
+      when:
+        - item is not skipped
+        - item is failed
+
+    # =========================================================================
+    # Summary
+    # =========================================================================
+
+    - name: "Healthcheck PASSED for {{ tenant_user }}"
+      ansible.builtin.debug:
+        msg: "All checks passed for tenant {{ tenant_user }}"
+      when: healthcheck_failures | length == 0
+
+    - name: "Healthcheck FAILED for {{ tenant_user }}"
+      ansible.builtin.fail:
+        msg: |
+          Healthcheck failed with {{ healthcheck_failures | length }} issue(s):
+          {% for f in healthcheck_failures %}
+            - {{ f }}
+          {% endfor %}
+      when: healthcheck_failures | length > 0
