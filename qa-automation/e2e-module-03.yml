@@ -2,11 +2,11 @@
 # =============================================================================
 # E2E — Module 3: App Connectivity for AI (Load-Generating)
 # =============================================================================
-# Validates pre-conditions then simulates student activity:
-#   - HTTP requests to Rocket.Chat (messaging platform)
-#   - Queries Kafka topics and consumer groups
-#   - Hits Camel integration endpoints in dev namespace
-#   - Queries Gateway API resources
+# Simulates actual student workflows across 5 labs:
+#   M1: Service Interconnect (Skupper CRs) + Camel ingestion (EDI POST)
+#   M3: Kafka message production + scale Camel deployments
+#   M4: Rocket.Chat AI agent (login + send messages → LLM inference)
+#   M5: Gateway policies (AuthPolicy + TokenRateLimitPolicy CRs)
 # =============================================================================
 
 - name: "E2E — Module 3: App Connectivity for AI"
@@ -18,7 +18,10 @@
     _api_url: "{{ ocp_api_url | default(openshift_api_url) }}"
     _tenant_user: "{{ tenant_user | default(user) }}"
     _use_sa_token: "{{ ocp_admin_password is not defined }}"
-    _load_iterations: "{{ load_iterations | default(10) }}"
+    _load_iterations: "{{ load_iterations | default(5) }}"
+    _guid: "{{ _tenant_user | regex_replace('^user-', '') }}"
+    _tenant_password: "{{ password | default(lookup('file', '/user_data/user_data.yml') | from_yaml).password }}"
+    _ingress_domain: "{{ openshift_cluster_ingress_domain | default((lookup('file', '/user_data/user_data.yml') | from_yaml).openshift_cluster_ingress_domain) }}"
     e2e_failures: []
 
   tasks:
@@ -144,31 +147,68 @@
       when: e2e_failures | length > 0
 
     # =================================================================
-    # Load-generating tests
+    # LAB M1: Service Interconnect — Skupper CRs
     # =================================================================
 
-    - name: Set Rocket.Chat URL
-      ansible.builtin.set_fact:
-        _rocketchat_url: "https://{{ r_rocketchat_route.resources[0].spec.host }}"
-      when: r_rocketchat_route.resources | default([]) | length > 0
-
-    # --- 1. Hit Rocket.Chat (simulates student accessing messaging) ---
-    - name: "LOAD: HTTP GET Rocket.Chat (simulates student accessing messaging)"
-      ansible.builtin.uri:
-        url: "{{ _rocketchat_url }}"
-        method: GET
-        validate_certs: false
-        status_code: [200, 302]
-        timeout: 15
-      loop: "{{ range(0, _load_iterations | int) | list }}"
-      loop_control:
-        label: "rocketchat-{{ item }}"
-      register: r_rc_hits
+    - name: "M3-M1: Create Skupper Site in devspaces namespace"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: present
+        definition:
+          apiVersion: skupper.io/v2alpha1
+          kind: Site
+          metadata:
+            name: "{{ _tenant_user }}-site"
+            namespace: "{{ _tenant_user }}-devspaces"
+          spec:
+            linkAccess: route
+      register: r_skupper_site
       ignore_errors: true
-      when: _rocketchat_url is defined
 
-    # --- 2. Get all routes in dev namespace and hit them ---
-    - name: "LOAD: Get routes in dev namespace"
+    - name: "M3-M1: Create Skupper AccessGrant"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: present
+        definition:
+          apiVersion: skupper.io/v2alpha1
+          kind: AccessGrant
+          metadata:
+            name: "grant-{{ _tenant_user }}"
+            namespace: "{{ _tenant_user }}-devspaces"
+          spec:
+            redemptionsAllowed: 1
+            expirationWindow: 168h
+      register: r_skupper_grant
+      ignore_errors: true
+
+    - name: "M3-M1: Create Skupper Listener for postgres"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: present
+        definition:
+          apiVersion: skupper.io/v2alpha1
+          kind: Listener
+          metadata:
+            name: postgres-listener
+            namespace: "{{ _tenant_user }}-devspaces"
+          spec:
+            routingKey: postgres
+            host: postgres
+            port: 5432
+      register: r_skupper_listener
+      ignore_errors: true
+
+    # =================================================================
+    # LAB M1: Camel Ingestion — POST EDI payloads
+    # =================================================================
+
+    - name: "M3-M1: Get Camel platform-http route in dev namespace"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -178,34 +218,70 @@
         namespace: "{{ _tenant_user }}-dev"
       register: r_dev_routes
 
-    - name: "LOAD: HTTP GET dev routes (simulates student testing integrations)"
-      ansible.builtin.uri:
-        url: "https://{{ item.spec.host }}"
-        method: GET
-        validate_certs: false
-        status_code: [200, 302, 404, 405]
-        timeout: 15
-      loop: "{{ r_dev_routes.resources | default([]) }}"
-      loop_control:
-        label: "{{ item.metadata.name }}"
-      register: r_dev_route_hits
+    - name: Set Camel ingestion URL (first route with platform-http or camel)
+      ansible.builtin.set_fact:
+        _camel_url: "https://{{ (r_dev_routes.resources | selectattr('metadata.name', 'search', 'camel|platform|ingestion') | first).spec.host }}"
+      when: r_dev_routes.resources | selectattr('metadata.name', 'search', 'camel|platform|ingestion') | list | length > 0
       ignore_errors: true
 
-    # --- 3. Query KafkaTopics (simulates student monitoring event streams) ---
-    - name: "LOAD: List KafkaTopics (simulates student checking event streams)"
-      kubernetes.core.k8s_info:
+    - name: Fallback — use first dev route as Camel endpoint
+      ansible.builtin.set_fact:
+        _camel_url: "https://{{ r_dev_routes.resources[0].spec.host }}"
+      when: _camel_url is not defined and r_dev_routes.resources | length > 0
+
+    - name: "LOAD M3-M1: POST EDI policy applications to Camel ingestion"
+      ansible.builtin.uri:
+        url: "{{ _camel_url }}"
+        method: POST
+        body: >-
+          ISA*00*          *00*          *ZZ*SENDER         *ZZ*RECEIVER       *230501*1200*U*00401*000000001*0*P*>~
+          GS*HP*SENDER*RECEIVER*20230501*1200*{{ item }}*X*004010X096A1~
+          ST*835*{{ '%04d' | format(item) }}~
+          BPR*I*{{ 150 + item * 10 }}.00*C*CHK*CCP~
+          TRN*1*1234567890123{{ '%04d' | format(item) }}~
+          DTM*405*20230501~
+          SE*6*{{ '%04d' | format(item) }}~
+          GE*1*{{ item }}~
+          IEA*1*{{ '%09d' | format(item) }}~
+        body_format: raw
+        headers:
+          Content-Type: text/plain
+        validate_certs: false
+        status_code: [200, 201, 204, 400, 404, 405, 500, 502, 503]
+        timeout: 30
+      loop: "{{ range(1, (_load_iterations | int) + 1) | list }}"
+      loop_control:
+        label: "edi-post-{{ item }}"
+      register: r_edi_posts
+      ignore_errors: true
+      when: _camel_url is defined
+
+    # =================================================================
+    # LAB M3: Scale Camel deployments + Kafka messages
+    # =================================================================
+
+    - name: "M3-M3: Scale Camel integration deployments to 1 replica"
+      kubernetes.core.k8s:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
         validate_certs: "{{ _k8s_validate_certs }}"
-        api_version: kafka.strimzi.io/v1beta2
-        kind: KafkaTopic
-        namespace: kafka
-      register: r_kafka_topics
-      when: r_kafka_ns.resources | length > 0
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ _tenant_user }}-dev"
+        name: "{{ item }}"
+        definition:
+          spec:
+            replicas: 1
+        merge_type: strategic-merge
+      loop:
+        - m2k
+        - r2k
+        - k2m
+        - k2r
+      register: r_camel_scale
       ignore_errors: true
 
-    # --- 4. Query Kafka cluster status (simulates monitoring) ---
-    - name: "LOAD: Check Kafka cluster pods (simulates student monitoring Kafka)"
+    - name: "M3-M3: Find Kafka broker pod for message production"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -215,23 +291,223 @@
         namespace: kafka
         label_selectors:
           - strimzi.io/kind=Kafka
+          - strimzi.io/name=my-cluster-kafka
       register: r_kafka_pods
       when: r_kafka_ns.resources | length > 0
-      ignore_errors: true
 
-    # --- 5. Query Gateway resources (simulates Connectivity Link lab) ---
-    - name: "LOAD: List HTTPRoutes in dev (simulates student configuring routes)"
+    - name: Set Kafka broker pod name
+      ansible.builtin.set_fact:
+        _kafka_pod: "{{ r_kafka_pods.resources[0].metadata.name }}"
+      when:
+        - r_kafka_pods is defined
+        - r_kafka_pods.resources | default([]) | length > 0
+
+    - name: "LOAD M3-M3: Produce messages to Kafka topic 'myroom'"
+      kubernetes.core.k8s_exec:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        namespace: kafka
+        pod: "{{ _kafka_pod }}"
+        command: >-
+          bash -c 'echo '"'"'{"user":"e2e-{{ _tenant_user }}","source":"load-test","text":"Test message {{ item }}"}'"'"' |
+          /opt/kafka/bin/kafka-console-producer.sh
+          --bootstrap-server localhost:9092
+          --topic myroom'
+      loop: "{{ range(1, (_load_iterations | int) + 1) | list }}"
+      loop_control:
+        label: "kafka-msg-{{ item }}"
+      register: r_kafka_msgs
+      ignore_errors: true
+      when: _kafka_pod is defined
+
+    # =================================================================
+    # LAB M4: Rocket.Chat AI Agent — login + send messages
+    # =================================================================
+
+    - name: Set Rocket.Chat URL
+      ansible.builtin.set_fact:
+        _rocketchat_url: "https://{{ r_rocketchat_route.resources[0].spec.host }}"
+      when: r_rocketchat_route.resources | default([]) | length > 0
+
+    - name: "M3-M4: Login to Rocket.Chat via REST API"
+      ansible.builtin.uri:
+        url: "{{ _rocketchat_url }}/api/v1/login"
+        method: POST
+        body_format: json
+        body:
+          user: "{{ _tenant_user }}"
+          password: "{{ _tenant_password }}"
+        validate_certs: false
+        status_code: [200, 401, 403]
+        timeout: 15
+      register: r_rc_login
+      ignore_errors: true
+      no_log: true
+      when: _rocketchat_url is defined
+
+    - name: Set RC auth headers
+      ansible.builtin.set_fact:
+        _rc_auth_token: "{{ r_rc_login.json.data.authToken }}"
+        _rc_user_id: "{{ r_rc_login.json.data.userId }}"
+      when:
+        - r_rc_login is defined
+        - r_rc_login.status | default(0) == 200
+      no_log: true
+
+    - name: "M3-M4: Find ai-support channel"
+      ansible.builtin.uri:
+        url: "{{ _rocketchat_url }}/api/v1/channels.info?roomName=ai-support-{{ _guid }}"
+        method: GET
+        headers:
+          X-Auth-Token: "{{ _rc_auth_token }}"
+          X-User-Id: "{{ _rc_user_id }}"
+        validate_certs: false
+        status_code: [200, 404]
+        timeout: 15
+      register: r_rc_channel
+      ignore_errors: true
+      when: _rc_auth_token is defined
+
+    - name: Set RC channel ID
+      ansible.builtin.set_fact:
+        _rc_channel_id: "{{ r_rc_channel.json.channel._id }}"
+      when:
+        - r_rc_channel is defined
+        - r_rc_channel.status | default(0) == 200
+
+    - name: "LOAD M3-M4: Send AI agent messages (triggers LLM inference)"
+      ansible.builtin.uri:
+        url: "{{ _rocketchat_url }}/api/v1/chat.sendMessage"
+        method: POST
+        headers:
+          X-Auth-Token: "{{ _rc_auth_token }}"
+          X-User-Id: "{{ _rc_user_id }}"
+        body_format: json
+        body:
+          message:
+            rid: "{{ _rc_channel_id }}"
+            msg: "{{ item.msg }}"
+        validate_certs: false
+        status_code: [200, 201, 400, 429]
+        timeout: 60
+      loop:
+        - msg: "Can you show me policy document 61356291"
+        - msg: "Can you generate a customer profile for order 61356291"
+        - msg: "Please, generate a customer profile for order 61356291"
+      loop_control:
+        label: "rc-ai-{{ item.msg | truncate(40, true) }}"
+      register: r_rc_ai_msgs
+      ignore_errors: true
+      when: _rc_channel_id is defined
+
+    - name: "LOAD M3-M4: Repeat profile requests (exhaust token budget)"
+      ansible.builtin.uri:
+        url: "{{ _rocketchat_url }}/api/v1/chat.sendMessage"
+        method: POST
+        headers:
+          X-Auth-Token: "{{ _rc_auth_token }}"
+          X-User-Id: "{{ _rc_user_id }}"
+        body_format: json
+        body:
+          message:
+            rid: "{{ _rc_channel_id }}"
+            msg: "Please, generate a customer profile for order {{ 61356290 + item }}"
+        validate_certs: false
+        status_code: [200, 201, 400, 429]
+        timeout: 60
+      loop: "{{ range(1, (_load_iterations | int) + 1) | list }}"
+      loop_control:
+        label: "rc-load-{{ item }}"
+      register: r_rc_load_msgs
+      ignore_errors: true
+      when: _rc_channel_id is defined
+
+    # =================================================================
+    # LAB M5: Gateway Policies — AuthPolicy + TokenRateLimitPolicy
+    # =================================================================
+
+    - name: "M3-M5: Check existing HTTPRoute in devspaces"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
         validate_certs: "{{ _k8s_validate_certs }}"
         api_version: gateway.networking.k8s.io/v1
         kind: HTTPRoute
-        namespace: "{{ _tenant_user }}-dev"
+        namespace: "{{ _tenant_user }}-devspaces"
       register: r_httproutes
       ignore_errors: true
 
-    - name: "LOAD: List Gateways (simulates student checking gateway config)"
+    - name: "M3-M5: Create AuthPolicy CR"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: present
+        definition:
+          apiVersion: kuadrant.io/v1
+          kind: AuthPolicy
+          metadata:
+            name: ai-proxy-auth
+            namespace: "{{ _tenant_user }}-devspaces"
+          spec:
+            targetRef:
+              group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ai-proxy-route
+            rules:
+              authentication:
+                api-key-users:
+                  apiKey:
+                    selector:
+                      matchLabels:
+                        app: "my-llm-{{ _tenant_user }}"
+                  credentials:
+                    authorizationHeader:
+                      prefix: Bearer
+      register: r_authpolicy
+      ignore_errors: true
+
+    - name: "M3-M5: Create TokenRateLimitPolicy CR"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: present
+        definition:
+          apiVersion: kuadrant.io/v1alpha1
+          kind: TokenRateLimitPolicy
+          metadata:
+            name: openai-token-limits
+            namespace: "{{ _tenant_user }}-devspaces"
+          spec:
+            targetRef:
+              group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ai-proxy-route
+            limits:
+              gold:
+                rates:
+                  - limit: 50
+                    window: 4m
+                when:
+                  - predicate: >-
+                      auth.identity.groups.split(",").exists(g, g == "gold")
+                counters:
+                  - expression: auth.identity.userid
+              silver:
+                rates:
+                  - limit: 500
+                    window: 2m
+                when:
+                  - predicate: >-
+                      auth.identity.groups.split(",").exists(g, g == "silver")
+                counters:
+                  - expression: auth.identity.userid
+      register: r_trlp
+      ignore_errors: true
+
+    - name: "M3-M5: Verify Gateway resources after policy creation"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -242,28 +518,20 @@
       register: r_gateways
       ignore_errors: true
 
-    # --- 6. List all services in dev (simulates student exploring namespace) ---
-    - name: "LOAD: List services in dev ns (simulates student exploring)"
-      kubernetes.core.k8s_info:
-        host: "{{ _k8s_host | default(omit, true) }}"
-        api_key: "{{ _k8s_api_key | default(omit, true) }}"
-        validate_certs: "{{ _k8s_validate_certs }}"
-        api_version: v1
-        kind: Service
-        namespace: "{{ _tenant_user }}-dev"
-      register: r_dev_services
-
     # =================================================================
     # Summary
     # =================================================================
     - name: "E2E Module 3 — Load Test Summary"
+      vars:
+        _edi_ok: "{{ r_edi_posts.results | default([]) | rejectattr('failed', 'equalto', true) | list | length if r_edi_posts is defined else 'skip' }}"
+        _kafka_ok: "{{ r_kafka_msgs.results | default([]) | rejectattr('failed', 'equalto', true) | list | length if r_kafka_msgs is defined else 'skip' }}"
+        _rc_ai_ok: "{{ r_rc_ai_msgs.results | default([]) | rejectattr('failed', 'equalto', true) | list | length if r_rc_ai_msgs is defined else 'skip' }}"
+        _rc_load_ok: "{{ r_rc_load_msgs.results | default([]) | rejectattr('failed', 'equalto', true) | list | length if r_rc_load_msgs is defined else 'skip' }}"
       ansible.builtin.debug:
         msg: >-
-          Load test complete for {{ _tenant_user }}:
-          Rocket.Chat hits: {{ (r_rc_hits.results | default([]) | selectattr('failed', 'equalto', false) | list | length) if r_rc_hits is defined else 'skipped' }} |
-          Dev routes hit: {{ r_dev_route_hits.results | default([]) | length }} |
-          KafkaTopics found: {{ r_kafka_topics.resources | default([]) | length }} |
-          Kafka pods: {{ r_kafka_pods.resources | default([]) | length }} |
-          HTTPRoutes: {{ r_httproutes.resources | default([]) | length }} |
-          Gateways: {{ r_gateways.resources | default([]) | length }} |
-          Dev services: {{ r_dev_services.resources | default([]) | length }}
+          {{ _tenant_user }}: EDI={{ _edi_ok }}/{{ _load_iterations }}
+          Kafka={{ _kafka_ok }}/{{ _load_iterations }}
+          RC-AI={{ _rc_ai_ok }} RC-load={{ _rc_load_ok }}/{{ _load_iterations }}
+          Camel-scale={{ r_camel_scale.results | default([]) | rejectattr('failed', 'equalto', true) | list | length }}/4
+          AuthPolicy={{ 'ok' if r_authpolicy is defined and not r_authpolicy.failed | default(false) else 'skip' }}
+          TRLP={{ 'ok' if r_trlp is defined and not r_trlp.failed | default(false) else 'skip' }}

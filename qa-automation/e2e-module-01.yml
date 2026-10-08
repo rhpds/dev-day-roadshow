@@ -1,24 +1,33 @@
 ---
 # =============================================================================
-# E2E — Module 1: The Developer Experience (Load-Generating)
+# E2E — Module 1: The Developer Experience (Student Workflow Simulation)
 # =============================================================================
-# Validates pre-conditions then simulates student activity:
-#   - HTTP requests to parasol-insurance in dev and prod
-#   - Hits the /api/claims/stats endpoint (the feature students build)
-#   - Triggers a Tekton PipelineRun to generate build load
-#   - Queries ArgoCD app status
+# Simulates what a student actually does in Module 1:
+#   1. Push code to GitLab (triggers Tekton pipeline)
+#   2. Use AI assistant (LiteLLM chat completion)
+#   3. Create merge request + merge (promotes to main)
+#   4. Create release tag (triggers prod promotion pipeline)
+#   5. Verify /api/claims/stats on dev and prod
+#   6. Query ArgoCD app sync status
 # =============================================================================
 
 - name: "E2E — Module 1: The Developer Experience"
   hosts: localhost
   connection: local
-  gather_facts: false
+  gather_facts: true
 
   vars:
     _api_url: "{{ ocp_api_url | default(openshift_api_url) }}"
     _tenant_user: "{{ tenant_user | default(user) }}"
     _use_sa_token: "{{ ocp_admin_password is not defined }}"
-    _load_iterations: "{{ load_iterations | default(10) }}"
+    _load_iterations: "{{ load_iterations | default(3) }}"
+    _ingress_domain: "{{ openshift_cluster_ingress_domain | default((lookup('file', '/user_data/user_data.yml') | from_yaml).openshift_cluster_ingress_domain) }}"
+    _tenant_password: "{{ password | default((lookup('file', '/user_data/user_data.yml') | from_yaml).password) }}"
+    _litellm_endpoint: "{{ litellm_api_endpoint | default((lookup('file', '/user_data/user_data.yml') | from_yaml).litellm_api_endpoint) }}"
+    _litellm_key: "{{ litellm_virtual_key | default((lookup('file', '/user_data/user_data.yml') | from_yaml).litellm_virtual_key) }}"
+    _gitlab_host: "gitlab-gitlab.{{ _ingress_domain }}"
+    _gitlab_url: "https://gitlab-gitlab.{{ _ingress_domain }}"
+    _branch_name: "feature/claims-stats-e2e-{{ ansible_date_time.epoch }}"
     e2e_failures: []
 
   tasks:
@@ -66,9 +75,9 @@
       when: not (_use_sa_token | bool)
 
     # =================================================================
-    # Pre-condition checks (fast presence validation)
+    # Pre-condition checks
     # =================================================================
-    - name: "M1-S1: Check DevSpaces namespace exists"
+    - name: "M1: Check DevSpaces namespace exists"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -81,10 +90,10 @@
     - name: Record DevSpaces namespace missing
       ansible.builtin.set_fact:
         e2e_failures: >-
-          {{ e2e_failures + ['M1-S1: DevSpaces namespace ' + _tenant_user + '-devspaces not found'] }}
+          {{ e2e_failures + ['M1: DevSpaces namespace ' + _tenant_user + '-devspaces not found'] }}
       when: r_devspaces_ns.resources | length == 0
 
-    - name: "M1-S3: Check parasol-insurance deployment in dev"
+    - name: "M1: Check parasol-insurance deployment in dev"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -95,13 +104,13 @@
         name: parasol-insurance
       register: r_parasol_dev
 
-    - name: Record parasol-insurance dev deployment missing
+    - name: Record parasol-insurance dev missing
       ansible.builtin.set_fact:
         e2e_failures: >-
-          {{ e2e_failures + ['M1-S3: parasol-insurance deployment not found in ' + _tenant_user + '-dev'] }}
+          {{ e2e_failures + ['M1: parasol-insurance deployment not found in ' + _tenant_user + '-dev'] }}
       when: r_parasol_dev.resources | length == 0
 
-    - name: "M1-S6: Check parasol-insurance deployment in prod"
+    - name: "M1: Check parasol-insurance deployment in prod"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -112,10 +121,10 @@
         name: parasol-insurance
       register: r_parasol_prod
 
-    - name: Record parasol-insurance prod deployment missing
+    - name: Record parasol-insurance prod missing
       ansible.builtin.set_fact:
         e2e_failures: >-
-          {{ e2e_failures + ['M1-S6: parasol-insurance deployment not found in ' + _tenant_user + '-prod'] }}
+          {{ e2e_failures + ['M1: parasol-insurance deployment not found in ' + _tenant_user + '-prod'] }}
       when: r_parasol_prod.resources | length == 0
 
     - name: Bail out if pre-conditions failed
@@ -128,10 +137,212 @@
       when: e2e_failures | length > 0
 
     # =================================================================
-    # Load-generating tests
+    # STUDENT WORKFLOW SIMULATION
     # =================================================================
 
-    - name: "LOAD: Get dev parasol-insurance route"
+    # -----------------------------------------------------------------
+    # Step 1: GitLab — find project, create branch, push a commit
+    # -----------------------------------------------------------------
+    - name: "WORKFLOW: Get GitLab project ID for parasol-insurance"
+      ansible.builtin.uri:
+        url: "{{ _gitlab_url }}/api/v4/projects?search=parasol-insurance&owned=true"
+        method: GET
+        user: "{{ _tenant_user }}"
+        password: "{{ _tenant_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        return_content: true
+        status_code: [200]
+      register: r_gitlab_projects
+      no_log: true
+      ignore_errors: true
+
+    - name: Set GitLab project ID
+      ansible.builtin.set_fact:
+        _gitlab_project_id: "{{ r_gitlab_projects.json[0].id }}"
+      when:
+        - r_gitlab_projects is not failed
+        - r_gitlab_projects.json | default([]) | length > 0
+
+    - name: "WORKFLOW: Create feature branch (student starts coding)"
+      ansible.builtin.uri:
+        url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_project_id }}/repository/branches"
+        method: POST
+        user: "{{ _tenant_user }}"
+        password: "{{ _tenant_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          branch: "{{ _branch_name }}"
+          ref: main
+        status_code: [201, 400]
+      register: r_create_branch
+      no_log: true
+      ignore_errors: true
+      when: _gitlab_project_id is defined
+
+    - name: "WORKFLOW: Push commit — ClaimsStatsResource.java (triggers pipeline)"
+      ansible.builtin.uri:
+        url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_project_id }}/repository/files/src%2Fmain%2Fjava%2Fcom%2Fredhat%2Fparasol%2Fresources%2FClaimsStatsResource.java"
+        method: POST
+        user: "{{ _tenant_user }}"
+        password: "{{ _tenant_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          branch: "{{ _branch_name }}"
+          commit_message: "feat: add claims statistics API endpoint"
+          content: |
+            package com.redhat.parasol.resources;
+
+            import jakarta.inject.Inject;
+            import jakarta.ws.rs.GET;
+            import jakarta.ws.rs.Path;
+            import jakarta.ws.rs.Produces;
+            import jakarta.ws.rs.core.MediaType;
+            import jakarta.ws.rs.core.Response;
+            import com.redhat.parasol.service.ClaimService;
+            import org.jboss.logging.Logger;
+
+            @Path("/api/claims/stats")
+            public class ClaimsStatsResource {
+                private static final Logger LOG = Logger.getLogger(ClaimsStatsResource.class);
+
+                @Inject
+                ClaimService claimService;
+
+                @GET
+                @Produces(MediaType.APPLICATION_JSON)
+                public Response getStats() {
+                    LOG.info("Fetching claims statistics");
+                    return Response.ok(claimService.getStats()).build();
+                }
+            }
+        status_code: [201, 400]
+      register: r_push_commit
+      no_log: true
+      ignore_errors: true
+      when: _gitlab_project_id is defined
+
+    # -----------------------------------------------------------------
+    # Step 2: Wait for Tekton PipelineRun to start
+    # -----------------------------------------------------------------
+    - name: "WORKFLOW: Check for PipelineRuns in build namespace"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: tekton.dev/v1
+        kind: PipelineRun
+        namespace: "{{ _tenant_user }}-build"
+      register: r_pipeline_runs
+      ignore_errors: true
+
+    # -----------------------------------------------------------------
+    # Step 3: AI assistant — LiteLLM chat completion (Zoo Code simulation)
+    # -----------------------------------------------------------------
+    - name: "WORKFLOW: LiteLLM AI call — student asks Zoo Code for help"
+      ansible.builtin.uri:
+        url: "{{ _litellm_endpoint }}/chat/completions"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _litellm_key }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          model: qwen3-14b
+          messages:
+            - role: user
+              content: "Fix SonarQube code smells in a Java REST endpoint that uses System.out.println instead of a logger and has an empty catch block"
+          max_tokens: 200
+        validate_certs: false
+        status_code: [200]
+        timeout: 60
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "llm-call-{{ item }}"
+      register: r_llm_calls
+      no_log: true
+      ignore_errors: true
+
+    # -----------------------------------------------------------------
+    # Step 4: GitLab — create merge request + merge
+    # -----------------------------------------------------------------
+    - name: "WORKFLOW: Create merge request (student promotes code)"
+      ansible.builtin.uri:
+        url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_project_id }}/merge_requests"
+        method: POST
+        user: "{{ _tenant_user }}"
+        password: "{{ _tenant_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          source_branch: "{{ _branch_name }}"
+          target_branch: main
+          title: "feat: add claims statistics API endpoint"
+        status_code: [201, 409]
+        return_content: true
+      register: r_create_mr
+      no_log: true
+      ignore_errors: true
+      when: _gitlab_project_id is defined
+
+    - name: Set MR IID
+      ansible.builtin.set_fact:
+        _mr_iid: "{{ r_create_mr.json.iid }}"
+      when:
+        - r_create_mr is not failed
+        - r_create_mr.json is defined
+        - r_create_mr.json.iid is defined
+
+    - name: "WORKFLOW: Merge the merge request"
+      ansible.builtin.uri:
+        url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_project_id }}/merge_requests/{{ _mr_iid }}/merge"
+        method: PUT
+        user: "{{ _tenant_user }}"
+        password: "{{ _tenant_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          merge_when_pipeline_succeeds: false
+        status_code: [200, 405, 406]
+      register: r_merge_mr
+      no_log: true
+      ignore_errors: true
+      when:
+        - _gitlab_project_id is defined
+        - _mr_iid is defined
+
+    # -----------------------------------------------------------------
+    # Step 5: GitLab — create release tag (triggers prod promotion)
+    # -----------------------------------------------------------------
+    - name: "WORKFLOW: Create release tag (triggers promotion pipeline)"
+      ansible.builtin.uri:
+        url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_project_id }}/repository/tags"
+        method: POST
+        user: "{{ _tenant_user }}"
+        password: "{{ _tenant_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          tag_name: "e2e-{{ ansible_date_time.epoch }}"
+          ref: main
+          message: "E2E load test release"
+        status_code: [201, 400]
+      register: r_create_tag
+      no_log: true
+      ignore_errors: true
+      when: _gitlab_project_id is defined
+
+    # -----------------------------------------------------------------
+    # Step 6: Verify app endpoints (dev + prod)
+    # -----------------------------------------------------------------
+    - name: "WORKFLOW: Get dev parasol-insurance route"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -142,7 +353,7 @@
         name: parasol-insurance
       register: r_dev_route
 
-    - name: "LOAD: Get prod parasol-insurance route"
+    - name: "WORKFLOW: Get prod parasol-insurance route"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -158,61 +369,32 @@
         _dev_url: "https://{{ r_dev_route.resources[0].spec.host | default('') }}"
         _prod_url: "https://{{ r_prod_route.resources[0].spec.host | default('') }}"
 
-    - name: "LOAD: HTTP GET parasol-insurance dev (simulates student checking app)"
-      ansible.builtin.uri:
-        url: "{{ _dev_url }}"
-        method: GET
-        validate_certs: false
-        status_code: [200, 302]
-        timeout: 15
-      loop: "{{ range(0, _load_iterations | int) | list }}"
-      loop_control:
-        label: "dev-hit-{{ item }}"
-      register: r_dev_hits
-      ignore_errors: true
-
-    - name: "LOAD: HTTP GET /api/claims/stats dev (simulates student testing feature)"
+    - name: "WORKFLOW: HTTP GET /api/claims/stats dev (student verifies feature)"
       ansible.builtin.uri:
         url: "{{ _dev_url }}/api/claims/stats"
         method: GET
         validate_certs: false
-        status_code: [200]
+        status_code: [200, 404]
         timeout: 15
         return_content: true
-      loop: "{{ range(0, _load_iterations | int) | list }}"
-      loop_control:
-        label: "stats-dev-{{ item }}"
-      register: r_stats_hits
+      register: r_stats_dev
       ignore_errors: true
 
-    - name: "LOAD: HTTP GET parasol-insurance prod (simulates Go Live verification)"
-      ansible.builtin.uri:
-        url: "{{ _prod_url }}"
-        method: GET
-        validate_certs: false
-        status_code: [200, 302]
-        timeout: 15
-      loop: "{{ range(0, _load_iterations | int) | list }}"
-      loop_control:
-        label: "prod-hit-{{ item }}"
-      register: r_prod_hits
-      ignore_errors: true
-
-    - name: "LOAD: HTTP GET /api/claims/stats prod (simulates prod feature check)"
+    - name: "WORKFLOW: HTTP GET /api/claims/stats prod (student verifies go-live)"
       ansible.builtin.uri:
         url: "{{ _prod_url }}/api/claims/stats"
         method: GET
         validate_certs: false
-        status_code: [200]
+        status_code: [200, 404]
         timeout: 15
         return_content: true
-      loop: "{{ range(0, _load_iterations | int) | list }}"
-      loop_control:
-        label: "stats-prod-{{ item }}"
-      register: r_stats_prod_hits
+      register: r_stats_prod
       ignore_errors: true
 
-    - name: "LOAD: Query ArgoCD apps (simulates student watching sync)"
+    # -----------------------------------------------------------------
+    # Step 7: Query ArgoCD apps (student watches GitOps sync)
+    # -----------------------------------------------------------------
+    - name: "WORKFLOW: Query ArgoCD app status"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -227,31 +409,36 @@
         - "{{ _tenant_user }}-parasol-insurance"
       register: r_argo_checks
 
-    - name: "LOAD: List PipelineRuns in build ns (simulates pipeline monitoring)"
-      kubernetes.core.k8s_info:
-        host: "{{ _k8s_host | default(omit, true) }}"
-        api_key: "{{ _k8s_api_key | default(omit, true) }}"
-        validate_certs: "{{ _k8s_validate_certs }}"
-        api_version: tekton.dev/v1
-        kind: PipelineRun
-        namespace: "{{ _tenant_user }}-build"
-      register: r_pipeline_runs
+    # -----------------------------------------------------------------
+    # Cleanup: delete the e2e feature branch
+    # -----------------------------------------------------------------
+    - name: "CLEANUP: Delete e2e feature branch"
+      ansible.builtin.uri:
+        url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_project_id }}/repository/branches/{{ _branch_name | urlencode }}"
+        method: DELETE
+        user: "{{ _tenant_user }}"
+        password: "{{ _tenant_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: [204, 404]
+      no_log: true
+      ignore_errors: true
+      when: _gitlab_project_id is defined
 
     # =================================================================
     # Summary
     # =================================================================
-    - name: Collect load test results
-      ansible.builtin.set_fact:
-        _dev_success: "{{ r_dev_hits.results | selectattr('status', 'defined') | selectattr('failed', 'equalto', false) | list | length }}"
-        _stats_success: "{{ r_stats_hits.results | selectattr('status', 'defined') | selectattr('failed', 'equalto', false) | list | length }}"
-        _prod_success: "{{ r_prod_hits.results | selectattr('status', 'defined') | selectattr('failed', 'equalto', false) | list | length }}"
-
-    - name: "E2E Module 1 — Load Test Summary"
+    - name: "E2E Module 1 — Student Workflow Summary"
       ansible.builtin.debug:
         msg: >-
-          Load test complete for {{ _tenant_user }}:
-          Dev home {{ _dev_success }}/{{ _load_iterations }} OK |
-          Dev /api/claims/stats {{ _stats_success }}/{{ _load_iterations }} OK |
-          Prod home {{ _prod_success }}/{{ _load_iterations }} OK |
-          PipelineRuns found: {{ r_pipeline_runs.resources | length }} |
+          Workflow simulation complete for {{ _tenant_user }}:
+          GitLab project found: {{ 'yes' if _gitlab_project_id is defined else 'no' }} |
+          Branch created: {{ 'yes' if r_create_branch is not failed else 'no' }} |
+          Commit pushed: {{ 'yes' if r_push_commit is not failed else 'no' }} |
+          PipelineRuns: {{ r_pipeline_runs.resources | default([]) | length }} |
+          LLM calls: {{ r_llm_calls.results | default([]) | selectattr('failed', 'equalto', false) | list | length }}/{{ _load_iterations }} |
+          MR created+merged: {{ 'yes' if _mr_iid is defined else 'no' }} |
+          Tag created: {{ 'yes' if r_create_tag is not failed else 'no' }} |
+          Dev /api/claims/stats: {{ r_stats_dev.status | default('skipped') }} |
+          Prod /api/claims/stats: {{ r_stats_prod.status | default('skipped') }} |
           ArgoCD apps queried: {{ r_argo_checks.results | length }}
