@@ -141,21 +141,47 @@
     # =================================================================
 
     # -----------------------------------------------------------------
+    # Step 0: GitLab — get OAuth token via Resource Owner Password flow
+    # -----------------------------------------------------------------
+    - name: "WORKFLOW: Get GitLab OAuth token"
+      ansible.builtin.uri:
+        url: "{{ _gitlab_url }}/oauth/token"
+        method: POST
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          grant_type: password
+          username: "{{ _tenant_user }}"
+          password: "{{ _tenant_password }}"
+        status_code: [200, 401]
+      register: r_gitlab_oauth
+      no_log: true
+      ignore_errors: true
+
+    - name: Set GitLab auth header
+      ansible.builtin.set_fact:
+        _gitlab_headers:
+          Authorization: "Bearer {{ r_gitlab_oauth.json.access_token }}"
+      when:
+        - r_gitlab_oauth is not failed
+        - r_gitlab_oauth.status | default(0) == 200
+      no_log: true
+
+    # -----------------------------------------------------------------
     # Step 1: GitLab — find project, create branch, push a commit
     # -----------------------------------------------------------------
     - name: "WORKFLOW: Get GitLab project ID for parasol-insurance"
       ansible.builtin.uri:
         url: "{{ _gitlab_url }}/api/v4/projects/{{ (_tenant_user + '%2Fparasol-insurance') }}"
         method: GET
-        user: "{{ _tenant_user }}"
-        password: "{{ _tenant_password }}"
-        force_basic_auth: true
+        headers: "{{ _gitlab_headers }}"
         validate_certs: false
         return_content: true
         status_code: [200, 404]
       register: r_gitlab_project
       no_log: true
       ignore_errors: true
+      when: _gitlab_headers is defined
 
     - name: Set GitLab project ID
       ansible.builtin.set_fact:
@@ -168,9 +194,7 @@
       ansible.builtin.uri:
         url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_project_id }}/repository/branches"
         method: POST
-        user: "{{ _tenant_user }}"
-        password: "{{ _tenant_password }}"
-        force_basic_auth: true
+        headers: "{{ _gitlab_headers }}"
         validate_certs: false
         body_format: json
         body:
@@ -186,9 +210,7 @@
       ansible.builtin.uri:
         url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_project_id }}/repository/files/src%2Fmain%2Fjava%2Fcom%2Fredhat%2Fparasol%2Fresources%2FClaimsStatsResource.java"
         method: POST
-        user: "{{ _tenant_user }}"
-        password: "{{ _tenant_password }}"
-        force_basic_auth: true
+        headers: "{{ _gitlab_headers }}"
         validate_certs: false
         body_format: json
         body:
@@ -274,9 +296,7 @@
       ansible.builtin.uri:
         url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_project_id }}/merge_requests"
         method: POST
-        user: "{{ _tenant_user }}"
-        password: "{{ _tenant_password }}"
-        force_basic_auth: true
+        headers: "{{ _gitlab_headers }}"
         validate_certs: false
         body_format: json
         body:
@@ -302,9 +322,7 @@
       ansible.builtin.uri:
         url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_project_id }}/merge_requests/{{ _mr_iid }}/merge"
         method: PUT
-        user: "{{ _tenant_user }}"
-        password: "{{ _tenant_password }}"
-        force_basic_auth: true
+        headers: "{{ _gitlab_headers }}"
         validate_certs: false
         body_format: json
         body:
@@ -324,9 +342,7 @@
       ansible.builtin.uri:
         url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_project_id }}/repository/tags"
         method: POST
-        user: "{{ _tenant_user }}"
-        password: "{{ _tenant_password }}"
-        force_basic_auth: true
+        headers: "{{ _gitlab_headers }}"
         validate_certs: false
         body_format: json
         body:
@@ -416,9 +432,7 @@
       ansible.builtin.uri:
         url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_project_id }}/repository/branches/{{ _branch_name | urlencode }}"
         method: DELETE
-        user: "{{ _tenant_user }}"
-        password: "{{ _tenant_password }}"
-        force_basic_auth: true
+        headers: "{{ _gitlab_headers }}"
         validate_certs: false
         status_code: [204, 404]
       no_log: true

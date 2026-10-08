@@ -20,7 +20,7 @@
     _use_sa_token: "{{ ocp_admin_password is not defined }}"
     _load_iterations: "{{ load_iterations | default(5) }}"
     _guid: "{{ _tenant_user | regex_replace('^user-', '') }}"
-    _tenant_password: "{{ password | default(lookup('file', '/user_data/user_data.yml') | from_yaml).password }}"
+    _tenant_password: "{{ password | default((lookup('file', '/user_data/user_data.yml') | from_yaml).password) }}"
     _ingress_domain: "{{ openshift_cluster_ingress_domain | default((lookup('file', '/user_data/user_data.yml') | from_yaml).openshift_cluster_ingress_domain) }}"
     e2e_failures: []
 
@@ -260,8 +260,8 @@
     # LAB M3: Scale Camel deployments + Kafka messages
     # =================================================================
 
-    - name: "M3-M3: Scale Camel integration deployments to 1 replica"
-      kubernetes.core.k8s:
+    - name: "M3-M3: Check existing Camel integration deployments"
+      kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
         validate_certs: "{{ _k8s_validate_certs }}"
@@ -269,15 +269,30 @@
         kind: Deployment
         namespace: "{{ _tenant_user }}-dev"
         name: "{{ item }}"
-        definition:
-          spec:
-            replicas: 1
-        merge_type: strategic-merge
       loop:
         - m2k
         - r2k
         - k2m
         - k2r
+      register: r_camel_deployments
+      ignore_errors: true
+
+    - name: "M3-M3: Scale existing Camel deployments to 1 replica"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: patched
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ _tenant_user }}-dev"
+        name: "{{ item.item }}"
+        definition:
+          spec:
+            replicas: 1
+      loop: "{{ r_camel_deployments.results | selectattr('resources', 'defined') | selectattr('resources', '!=', []) | list }}"
+      loop_control:
+        label: "{{ item.item }}"
       register: r_camel_scale
       ignore_errors: true
 
