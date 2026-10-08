@@ -1,0 +1,34 @@
+---
+# =============================================================================
+# Dev Day Roadshow — E2E Smoke Tests (Orchestrator)
+# =============================================================================
+#
+# Thin orchestrator that includes per-module e2e playbooks.
+# Add new modules by creating qa-automation/e2e-module-XX.yml
+# and adding an include below.
+#
+# Usage:
+#   ansible-playbook qa-automation/e2e.yml \
+#     -e "ocp_api_url=https://api.cluster-xxx:6443" \
+#     -e "ocp_admin_password=xxx" \
+#     -e "tenant_user=user-abc12"
+#
+# To run a single module:
+#   ansible-playbook qa-automation/e2e-module-01.yml -e "..."
+# =============================================================================
+
+- name: "E2E — Module 1: The Developer Experience"
+  ansible.builtin.import_playbook: e2e-module-01.yml
+
+- name: "E2E — Module 3: App Connectivity for AI"
+  ansible.builtin.import_playbook: e2e-module-03.yml
+
+- name: "E2E — Module 4: AI-Powered Troubleshooting"
+  ansible.builtin.import_playbook: e2e-module-04.yml
+
+# --- Pending modules — uncomment when content is delivered ---
+# - name: "E2E — Module 2: TBD"
+#   ansible.builtin.import_playbook: e2e-module-02.yml
+
+# - name: "E2E — Module 5: TBD"
+#   ansible.builtin.import_playbook: e2e-module-05.yml
