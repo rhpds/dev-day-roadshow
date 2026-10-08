@@ -74,6 +74,25 @@
       openshift_cluster_gitops_user: "admin"
       openshift_cluster_gitops_password: "{{ openshift_gitops_admin_password }}"
 
+- name: Enable OpenShift login for ArgoCD and grant admin role to cluster admins
+  kubernetes.core.k8s:
+    state: patched
+    definition:
+      apiVersion: argoproj.io/v1beta1
+      kind: ArgoCD
+      metadata:
+        name: openshift-gitops
+        namespace: openshift-gitops
+      spec:
+        rbac:
+          defaultPolicy: ""
+          policy: |
+            g, admin, role:admin
+          scopes: '[groups, preferred_username]'
+  retries: 10
+  delay: 30
+  ignore_errors: true
+
 - name: Disable self-provisioning for regular users
   kubernetes.core.k8s:
     state: present

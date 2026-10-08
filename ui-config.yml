@@ -16,7 +16,7 @@ tabs:
     url: 'https://devspaces.${DOMAIN}'
 
   - name: GitLab
-    url: 'https://gitlab-gitlab.${DOMAIN}'
+    url: 'https://gitlab-gitlab.${DOMAIN}/dashboard/projects/personal#'
 
   - name: Developer Hub
     url: 'https://backstage-developer-hub-rhdh.${DOMAIN}'

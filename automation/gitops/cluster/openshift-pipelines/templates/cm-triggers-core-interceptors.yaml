@@ -1,0 +1,14 @@
+---
+# Workaround for Pipelines 1.22.6 packaging bug: the operator image
+# payload omits this ConfigMap, causing all three Triggers pods to
+# crash-loop. Pre-creating it lets Triggers start while we wait for
+# a fixed operator release. Remove once a corrected version ships.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-triggers-core-interceptors
+  namespace: openshift-pipelines
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+data:
+  github.enterprise-host-allowlist: ""
