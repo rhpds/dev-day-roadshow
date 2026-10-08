@@ -109,7 +109,7 @@ approval_checklist:
     module_summaries:
       - title: "The Developer Experience"
         overview: "Full inner+outer loop developer journey: explore Developer Hub and Lightspeed, create a Dev Spaces workspace via golden path template, build a Quarkus REST endpoint, push through CI/CD pipeline with SonarQube quality gates, fix code smells with Zoo Code AI assistant, and deploy to production via GitOps/Argo CD."
-      - title: "Secure Software Factory"
+      - title: "The Trusted Build & Security Factory"
         overview: "Participants configure CI/CD pipelines with integrated security checks, generate and verify supply chain provenance artifacts, and utilize developer hub automation to streamline secure deployments. Implements SLSA Level 3 compliance using Red Hat Advanced Developer Suite tools."
       - title: "App Connectivity for AI"
         overview: "Five-lab track covering Apache Camel data ingestion (EDI→XML), Service Interconnect for cross-cluster DB connectivity, Kafka-based messaging bridge (Matrix↔Rocket.Chat), agentic AI support bot with Camel+MaaS and MCP tool calling, and LLM governance via Connectivity Link (API key auth, token rate limiting)."
