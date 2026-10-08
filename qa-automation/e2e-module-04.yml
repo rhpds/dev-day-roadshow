@@ -410,14 +410,11 @@
 
     - name: "E3: PromQL — request rate by status code"
       ansible.builtin.uri:
-        url: "{{ _thanos_url }}/api/v1/query"
+        url: "{{ _thanos_url }}/api/v1/query?query={{ 'rate(http_server_requests_seconds_count{namespace=\"' + _tenant_user + '-parasol-payments\"}[5m])' | urlencode }}"
         method: GET
         validate_certs: false
         headers:
           Authorization: "Bearer {{ _k8s_api_key }}"
-        body_format: form-urlencoded
-        body:
-          query: 'rate(http_server_requests_seconds_count{namespace="{{ _tenant_user }}-parasol-payments"}[5m])'
         status_code: [200, 401, 403, 422, 503]
         timeout: 15
       register: r_prom_request_rate
@@ -428,14 +425,11 @@
 
     - name: "E3: PromQL — error rate ratio"
       ansible.builtin.uri:
-        url: "{{ _thanos_url }}/api/v1/query"
+        url: "{{ _thanos_url }}/api/v1/query?query={{ 'sum(rate(http_server_requests_seconds_count{namespace=\"' + _tenant_user + '-parasol-payments\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{namespace=\"' + _tenant_user + '-parasol-payments\"}[5m]))' | urlencode }}"
         method: GET
         validate_certs: false
         headers:
           Authorization: "Bearer {{ _k8s_api_key }}"
-        body_format: form-urlencoded
-        body:
-          query: 'sum(rate(http_server_requests_seconds_count{namespace="{{ _tenant_user }}-parasol-payments",status=~"5.."}[5m])) / sum(rate(http_server_requests_seconds_count{namespace="{{ _tenant_user }}-parasol-payments"}[5m]))'
         status_code: [200, 401, 403, 422, 503]
         timeout: 15
       register: r_prom_error_ratio
@@ -446,14 +440,11 @@
 
     - name: "E3: PromQL — CPU usage by pod"
       ansible.builtin.uri:
-        url: "{{ _thanos_url }}/api/v1/query"
+        url: "{{ _thanos_url }}/api/v1/query?query={{ 'sum(rate(container_cpu_usage_seconds_total{namespace=\"' + _tenant_user + '-parasol-payments\"}[5m])) by (pod)' | urlencode }}"
         method: GET
         validate_certs: false
         headers:
           Authorization: "Bearer {{ _k8s_api_key }}"
-        body_format: form-urlencoded
-        body:
-          query: 'sum(rate(container_cpu_usage_seconds_total{namespace="{{ _tenant_user }}-parasol-payments"}[5m])) by (pod)'
         status_code: [200, 401, 403, 422, 503]
         timeout: 15
       register: r_prom_cpu
