@@ -1,0 +1,55 @@
+= Module 5: AI-Driven App Modernization
+include::partial$_attributes.adoc[]
+:imagesdir: ../assets/images
+
+// Placeholder — content authored by James Falkner (pending)
+
+Welcome to the AI-Driven App Modernization module — a hands-on experience where you will analyze, refactor, and migrate a legacy application to modern cloud-native standards on Red Hat OpenShift, using automated analysis tools and AI-assisted code generation.
+
+== Learning Objectives
+
+* *Analyze Legacy Workloads:* Run automated code assessments using the Migration Toolkit for Applications (MTA) to identify API deprecations, framework incompatibilities, and containerization blockers
+* *Accelerate Code Refactoring with AI:* Use Red Hat Developer Lightspeed directly within your IDE to receive AI-driven recommendations and automated code fixes for legacy JavaEE 7 dependencies
+* *Deploy to OpenShift:* Package and run the modern application on Red Hat OpenShift using cloud-native runtimes
+
+== Your Role and Mission
+
+Your mission is to upgrade and refactor a legacy JavaEE 7 insurance application. You will identify technical debt using automated analysis, leverage developer-focused AI to fix outdated APIs and configuration files, and deploy the updated application to OpenShift.
+
+== The Developer Journey
+
+[#section-1]
+=== Phase 1: Code Analysis
+
+Run MTA assessment on the JavaEE 7 codebase to generate migration reports and issue severity ratings.
+
+_Content pending from content authors._
+
+[#section-2]
+=== Phase 2: AI-Guided Refactoring
+
+Fix legacy code and patterns using Developer Lightspeed to automatically refactor legacy JavaEE code to modern Quarkus / Jakarta EE standards.
+
+_Content pending from content authors._
+
+[#section-3]
+=== Phase 3: Accelerate Modernization with Agents
+
+Refactor dependencies and impacted code using MTA's knowledge-based rules.
+
+_Content pending from content authors._
+
+[#section-4]
+=== Phase 4: OpenShift Deployment
+
+Build, package, and verify the containerized application on Red Hat OpenShift.
+
+_Content pending from content authors._
+
+== Technology Stack
+
+* Red Hat OpenShift
+* Red Hat Dev Spaces
+* Red Hat Migration Toolkit for Applications (MTA)
+* Red Hat Developer Lightspeed
+* JBoss EAP 7, Red Hat Build of Quarkus
