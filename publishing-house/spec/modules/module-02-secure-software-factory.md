@@ -1,4 +1,4 @@
-# Module 02 — Secure Software Factory
+# Module 02 — The Trusted Build & Security Factory
 
 ### Status
 
@@ -10,14 +10,35 @@ Secure the software supply chain from code to production by implementing automat
 
 ### Lab Outline
 
-Participants configure CI/CD pipelines with integrated security checks, generate and verify supply chain provenance artifacts, and utilize developer hub automation to streamline secure deployments.
+- Implement security guardrails directly within CI/CD pipelines
+- Generate and verify trust artifacts (SLSA Level 3) using Red Hat Trusted Software Supply Chain tools
+- Utilize Red Hat Developer Hub (RHDH) to reduce cognitive overload via automated compliance
+- Manage secure lifecycles using the TAS, TPA, and TSF stack
 
-### Key Technologies
+### Technology Stack
 
-- Red Hat Advanced Developer Suite
-- Tekton / OpenShift Pipelines
-- SLSA Level 3 provenance
-- Developer Hub automation
+- Red Hat Advanced Developer Suite (RHADS) — supply chain security
+- Red Hat Trusted Artifact Signer (TAS) — artifact integrity
+- Red Hat Trusted Profile Analyzer (TPA) — application security profile analysis
+- Red Hat Advanced Cluster Security (ACS) — Kubernetes cluster security
+- Red Hat OpenShift Pipelines — CI/CD
+- Red Hat GitOps — deployments
+- Red Hat Quay — container image registry
+- Zero Trust Workload Identity Manager (ZTWIM) — node and workload attestation
+
+### Contextual Alignment
+
+Addresses the critical hardening phase, transitioning from Module 1's inner-loop development to a verifiable production pipeline. Shift-left strategy to streamline developer experience while ensuring end-to-end provenance.
+
+### Target Audience
+
+Developers, DevSecOps, Cloud Architects, Platform Engineers, IT Decision Makers.
+
+### Reference Resources
+
+- Enterprise Red Hat TAP Demo (catalog)
+- Enhancing Developer Sandbox (catalog)
+- Secure Dev Workflows (catalog)
 
 ### Notes
 

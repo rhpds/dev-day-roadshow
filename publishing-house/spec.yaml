@@ -34,7 +34,7 @@ spec:
     - "Analyze legacy workloads using the Migration Toolkit for Applications (MTA), accelerate code refactoring with Red Hat Developer Lightspeed, and deploy modern applications to Red Hat OpenShift"
   modules:              # [{id, title, duration_min}] — synced from content/ (source of truth); id is stable
     - {id: module-01, title: "The Developer Experience", duration_min: 85, status: complete}
-    - {id: module-02, title: "Secure Software Factory", duration_min: 35, status: not_started}
+    - {id: module-02, title: "The Trusted Build & Security Factory", duration_min: 35, status: not_started}
     - {id: module-03, title: "App Connectivity for AI", duration_min: 150, status: complete}
     - {id: module-04, title: "AI-Powered Troubleshooting", duration_min: 35, status: complete}
     - {id: module-05, title: "AI-Driven App Modernization", duration_min: 35, status: not_started}
