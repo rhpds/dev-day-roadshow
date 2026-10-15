@@ -161,6 +161,7 @@ We also need a database backend for our modernized application. For this we use 
 [source,bash]
 ----
 oc new-app --template=postgresql-ephemeral \
+  -p POSTGRESQL_VERSION=12 \
   -p DATABASE_SERVICE_NAME=parasol-db \
   -p POSTGRESQL_USER=parasol \
   -p POSTGRESQL_PASSWORD=parasol \
