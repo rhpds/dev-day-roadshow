@@ -1,0 +1,584 @@
+---
+# =============================================================================
+# E2E — Module 5: AI-powered migration using MTA (Student Workflow Simulation)
+# =============================================================================
+# Simulates actual student actions from Module 5:
+#   S3: Start mta-lab DevWorkspace (exercises Dev Spaces scheduler)
+#   S4-S6: LiteLLM DLS calls — AI-assisted code refactoring (MaaS load)
+#   S7: Checkout quarkus branch in GitLab, deploy PostgreSQL + parasol-insurance
+#       to {user}-ai-mta, verify /api/claims and /api/inbox
+#
+# Pre-conditions (namespace, ArgoCD app, DevWorkspace) are validated by
+# healthcheck.yml — this playbook assumes the environment is ready.
+# =============================================================================
+
+- name: "E2E — Module 5: AI-powered migration using MTA"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    _api_url: "{{ ocp_api_url | default(openshift_api_url) }}"
+    _tenant_user: "{{ tenant_user | default(user) }}"
+    _use_sa_token: "{{ ocp_admin_password is not defined }}"
+    _load_iterations: "{{ load_iterations | default(3) }}"
+    _ingress_domain: "{{ openshift_cluster_ingress_domain | default((lookup('file', '/user_data/user_data.yml') | from_yaml).openshift_cluster_ingress_domain) }}"
+    _tenant_password: "{{ password | default((lookup('file', '/user_data/user_data.yml') | from_yaml).password) }}"
+    _litellm_endpoint: "{{ litellm_api_endpoint | default((lookup('file', '/user_data/user_data.yml') | from_yaml).litellm_api_endpoint) }}"
+    _litellm_key: "{{ litellm_virtual_key | default((lookup('file', '/user_data/user_data.yml') | from_yaml).litellm_virtual_key) }}"
+    _gitlab_host: "gitlab-gitlab.{{ _ingress_domain }}"
+    _gitlab_url: "https://gitlab-gitlab.{{ _ingress_domain }}"
+    _mta_namespace: "{{ _tenant_user }}-ai-mta"
+    e2e_failures: []
+
+  tasks:
+    - name: Validate required variables
+      ansible.builtin.assert:
+        that:
+          - ocp_api_url is defined or openshift_api_url is defined
+          - ocp_admin_password is defined or _use_sa_token | bool
+          - tenant_user is defined or user is defined
+        fail_msg: "Pass ocp_api_url, ocp_admin_password, and tenant_user via -e (or run in showroom runner)"
+
+    - name: Get runtime-automation SA token
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        namespace: "{{ _tenant_user }}-showroom"
+        name: runtime-automation-token
+      register: _ra_secret
+      when: _use_sa_token | bool
+
+    - name: Set k8s auth for runtime-automation SA
+      ansible.builtin.set_fact:
+        _k8s_host: "{{ _api_url }}"
+        _k8s_api_key: "{{ _ra_secret.resources[0].data.token | b64decode }}"
+        _k8s_validate_certs: false
+      when: _use_sa_token | bool
+      no_log: true
+
+    - name: Login to OpenShift with password
+      ansible.builtin.command:
+        cmd: >-
+          oc login {{ _api_url }}
+          --username admin
+          --password {{ ocp_admin_password }}
+          --insecure-skip-tls-verify
+      changed_when: false
+      no_log: true
+      when: not (_use_sa_token | bool)
+
+    - name: Set k8s auth for CLI mode
+      ansible.builtin.set_fact:
+        _k8s_host: ""
+        _k8s_api_key: ""
+        _k8s_validate_certs: true
+      when: not (_use_sa_token | bool)
+
+    # =================================================================
+    # SECTION 3: Start mta-lab DevWorkspace (exercises Dev Spaces scheduler)
+    # =================================================================
+
+    - name: "S3: Start mta-lab DevWorkspace"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: patched
+        api_version: workspace.devfile.io/v1alpha2
+        kind: DevWorkspace
+        namespace: "{{ _tenant_user }}-devspaces"
+        name: mta-lab
+        definition:
+          spec:
+            started: true
+      register: r_dw_start
+      ignore_errors: true
+
+    - name: "S3: Wait for DevWorkspace to reach Running phase (up to 5 min)"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: workspace.devfile.io/v1alpha2
+        kind: DevWorkspace
+        namespace: "{{ _tenant_user }}-devspaces"
+        name: mta-lab
+      register: r_dw_status
+      until: >-
+        r_dw_status.resources | length > 0
+        and r_dw_status.resources[0].status.phase | default('') == 'Running'
+      retries: 30
+      delay: 10
+      ignore_errors: true
+
+    - name: "S3: Record DevWorkspace phase"
+      ansible.builtin.set_fact:
+        _dw_phase: "{{ r_dw_status.resources[0].status.phase | default('Unknown') }}"
+        _dw_ide_url: "{{ r_dw_status.resources[0].status.mainUrl | default('') }}"
+      when: r_dw_status.resources | length > 0
+
+    - name: "S3: HTTP GET DevWorkspace IDE URL (exercises ingress)"
+      ansible.builtin.uri:
+        url: "{{ _dw_ide_url }}"
+        method: GET
+        validate_certs: false
+        status_code: [200, 301, 302, 401, 403]
+        timeout: 15
+        follow_redirects: none
+      register: r_dw_ide_check
+      ignore_errors: true
+      when: _dw_ide_url | default('') | length > 0
+
+    # =================================================================
+    # SECTIONS 4-6: DLS AI-assisted refactoring (LiteLLM load on MaaS)
+    # =================================================================
+
+    - name: "S4-S6: LiteLLM DLS — MDB to Reactive Messaging refactoring"
+      ansible.builtin.uri:
+        url: "{{ _litellm_endpoint }}/chat/completions"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _litellm_key }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          model: qwen3-235b
+          messages:
+            - role: system
+              content: "You are Red Hat Developer Lightspeed for MTA. Assist with Java EE to Quarkus migration."
+            - role: user
+              content: "{{ item.prompt }}"
+          max_tokens: 500
+        validate_certs: false
+        status_code: [200]
+        timeout: 120
+      loop:
+        - prompt: "Modernize EmailIntakeMDB from @MessageDriven JMS MessageListener to @ApplicationScoped with @Incoming SmallRye Reactive Messaging. Replace javax.ejb imports with jakarta.enterprise.context and microprofile.reactive.messaging."
+        - prompt: "Apply custom MTA rule audit-logging-0003: replace FileSystemAuditLogger with StreamableAuditLogger in ClaimsResource. The audit-logging-library v1 uses sync file-based logging, v2 uses async stream-based logging."
+        - prompt: "Modernize ClaimService from @Stateless EJB to @ApplicationScoped CDI bean with @Transactional. Replace @EJB injection with @Inject. Update javax.ejb imports to jakarta.enterprise.context and jakarta.transaction."
+      loop_control:
+        label: "dls-refactor-{{ ansible_loop.index }}"
+        extended: true
+      register: r_dls_calls
+      no_log: true
+      ignore_errors: true
+
+    - name: "S4-S6: LiteLLM DLS — repeat load (stress MaaS throughput)"
+      ansible.builtin.uri:
+        url: "{{ _litellm_endpoint }}/chat/completions"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _litellm_key }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          model: qwen3-235b
+          messages:
+            - role: system
+              content: "You are Red Hat Developer Lightspeed for MTA. Assist with Java EE to Quarkus migration."
+            - role: user
+              content: "Review pom.xml changes for EAP WAR to Quarkus JAR migration. List the dependency shifts: javax BOM to Quarkus BOM, JMS to SmallRye Reactive Messaging, EJB to CDI, javax.persistence to jakarta.persistence with quarkus-hibernate-orm."
+          max_tokens: 300
+        validate_certs: false
+        status_code: [200]
+        timeout: 120
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "dls-load-{{ item }}"
+      register: r_dls_load
+      no_log: true
+      ignore_errors: true
+
+    # =================================================================
+    # SECTION 7: Deploy Quarkus app to OpenShift
+    # =================================================================
+
+    - name: "S7: Get GitLab OAuth token"
+      ansible.builtin.uri:
+        url: "{{ _gitlab_url }}/oauth/token"
+        method: POST
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          grant_type: password
+          username: "{{ _tenant_user }}"
+          password: "{{ _tenant_password }}"
+        status_code: [200, 401]
+      register: r_gitlab_oauth
+      no_log: true
+      ignore_errors: true
+
+    - name: Set GitLab auth header
+      ansible.builtin.set_fact:
+        _gitlab_headers:
+          Authorization: "Bearer {{ r_gitlab_oauth.json.access_token }}"
+      when:
+        - r_gitlab_oauth is not failed
+        - r_gitlab_oauth.status | default(0) == 200
+      no_log: true
+
+    - name: "S7: Get GitLab project ID for parasol-insurance-eap"
+      ansible.builtin.uri:
+        url: "{{ _gitlab_url }}/api/v4/projects/{{ (_tenant_user + '%2Fparasol-insurance-eap') }}"
+        method: GET
+        headers: "{{ _gitlab_headers }}"
+        validate_certs: false
+        return_content: true
+        status_code: [200, 404]
+      register: r_gitlab_eap_project
+      no_log: true
+      ignore_errors: true
+      when: _gitlab_headers is defined
+
+    - name: Set GitLab EAP project ID
+      ansible.builtin.set_fact:
+        _gitlab_eap_project_id: "{{ r_gitlab_eap_project.json.id }}"
+      when:
+        - r_gitlab_eap_project is not failed
+        - r_gitlab_eap_project.status | default(0) == 200
+
+    - name: "S7: Check quarkus branch exists"
+      ansible.builtin.uri:
+        url: "{{ _gitlab_url }}/api/v4/projects/{{ _gitlab_eap_project_id }}/repository/branches/quarkus"
+        method: GET
+        headers: "{{ _gitlab_headers }}"
+        validate_certs: false
+        status_code: [200, 404]
+      register: r_quarkus_branch
+      ignore_errors: true
+      when: _gitlab_eap_project_id is defined
+
+    - name: Record quarkus branch missing
+      ansible.builtin.set_fact:
+        e2e_failures: >-
+          {{ e2e_failures + ['S7: quarkus branch not found in parasol-insurance-eap'] }}
+      when:
+        - r_quarkus_branch is defined
+        - r_quarkus_branch.status | default(0) == 404
+
+    - name: "S7: Deploy PostgreSQL (student runs oc new-app --template=postgresql-ephemeral)"
+      ansible.builtin.command:
+        cmd: >-
+          oc new-app --template=postgresql-ephemeral
+          --param POSTGRESQL_USER=parasol
+          --param POSTGRESQL_PASSWORD=parasol
+          --param POSTGRESQL_DATABASE=parasol
+          --param DATABASE_SERVICE_NAME=parasol-db
+          -n {{ _mta_namespace }}
+          {% if _use_sa_token | bool %}
+          --server={{ _api_url }}
+          --token={{ _k8s_api_key }}
+          --insecure-skip-tls-verify
+          {% endif %}
+      register: r_pg_deploy
+      ignore_errors: true
+      no_log: true
+
+    - name: "S7: Wait for parasol-db rollout"
+      ansible.builtin.command:
+        cmd: >-
+          oc rollout status deploymentconfig/parasol-db
+          -n {{ _mta_namespace }}
+          --timeout=120s
+          {% if _use_sa_token | bool %}
+          --server={{ _api_url }}
+          --token={{ _k8s_api_key }}
+          --insecure-skip-tls-verify
+          {% endif %}
+      register: r_pg_rollout
+      ignore_errors: true
+      no_log: true
+
+    - name: "S7: Create ImageStream for parasol-insurance"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: present
+        definition:
+          apiVersion: image.openshift.io/v1
+          kind: ImageStream
+          metadata:
+            name: parasol-insurance
+            namespace: "{{ _mta_namespace }}"
+            labels:
+              app: parasol-insurance
+      register: r_is_create
+      ignore_errors: true
+
+    - name: "S7: Create BuildConfig for parasol-insurance"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: present
+        definition:
+          apiVersion: build.openshift.io/v1
+          kind: BuildConfig
+          metadata:
+            name: parasol-insurance
+            namespace: "{{ _mta_namespace }}"
+            labels:
+              app: parasol-insurance
+          spec:
+            output:
+              to:
+                kind: ImageStreamTag
+                name: parasol-insurance:latest
+            source:
+              type: Git
+              git:
+                uri: "https://{{ _gitlab_host }}/{{ _tenant_user }}/parasol-insurance-eap.git"
+                ref: quarkus
+              contextDir: "."
+              sourceSecret:
+                name: gitlab-credentials
+            strategy:
+              type: Source
+              sourceStrategy:
+                from:
+                  kind: ImageStreamTag
+                  name: java:17-ubi8
+                  namespace: openshift
+                env:
+                  - name: MAVEN_ARGS
+                    value: "clean package -DskipTests"
+            triggers: []
+      register: r_bc_create
+      ignore_errors: true
+
+    - name: "S7: Start S2I build (exercises build system — heavy load)"
+      ansible.builtin.command:
+        cmd: >-
+          oc start-build parasol-insurance
+          -n {{ _mta_namespace }}
+          --follow
+          {% if _use_sa_token | bool %}
+          --server={{ _api_url }}
+          --token={{ _k8s_api_key }}
+          --insecure-skip-tls-verify
+          {% endif %}
+      register: r_build
+      ignore_errors: true
+      no_log: true
+      timeout: 600
+
+    - name: "S7: Create parasol-insurance Deployment"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: present
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: parasol-insurance
+            namespace: "{{ _mta_namespace }}"
+            labels:
+              app: parasol-insurance
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: parasol-insurance
+            template:
+              metadata:
+                labels:
+                  app: parasol-insurance
+              spec:
+                containers:
+                  - name: parasol-insurance
+                    image: "image-registry.openshift-image-registry.svc:5000/{{ _mta_namespace }}/parasol-insurance:latest"
+                    ports:
+                      - containerPort: 8080
+                    env:
+                      - name: QUARKUS_DATASOURCE_JDBC_URL
+                        value: "jdbc:postgresql://parasol-db:5432/parasol"
+                      - name: QUARKUS_DATASOURCE_USERNAME
+                        value: parasol
+                      - name: QUARKUS_DATASOURCE_PASSWORD
+                        value: parasol
+                    readinessProbe:
+                      httpGet:
+                        path: /q/health/ready
+                        port: 8080
+                      initialDelaySeconds: 10
+                      periodSeconds: 5
+                    livenessProbe:
+                      httpGet:
+                        path: /q/health/live
+                        port: 8080
+                      initialDelaySeconds: 15
+                      periodSeconds: 10
+      register: r_deploy_create
+      ignore_errors: true
+
+    - name: "S7: Create Service for parasol-insurance"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: parasol-insurance
+            namespace: "{{ _mta_namespace }}"
+            labels:
+              app: parasol-insurance
+          spec:
+            ports:
+              - port: 8080
+                targetPort: 8080
+                protocol: TCP
+            selector:
+              app: parasol-insurance
+      register: r_svc_create
+      ignore_errors: true
+
+    - name: "S7: Create Route for parasol-insurance"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: present
+        definition:
+          apiVersion: route.openshift.io/v1
+          kind: Route
+          metadata:
+            name: parasol-insurance
+            namespace: "{{ _mta_namespace }}"
+            labels:
+              app: parasol-insurance
+          spec:
+            to:
+              kind: Service
+              name: parasol-insurance
+            port:
+              targetPort: 8080
+            tls:
+              termination: edge
+              insecureEdgeTerminationPolicy: Redirect
+      register: r_route_create
+      ignore_errors: true
+
+    - name: "S7: Wait for parasol-insurance deployment rollout"
+      ansible.builtin.command:
+        cmd: >-
+          oc rollout status deployment/parasol-insurance
+          -n {{ _mta_namespace }}
+          --timeout=120s
+          {% if _use_sa_token | bool %}
+          --server={{ _api_url }}
+          --token={{ _k8s_api_key }}
+          --insecure-skip-tls-verify
+          {% endif %}
+      register: r_app_rollout
+      ignore_errors: true
+      no_log: true
+
+    - name: "S7: Get parasol-insurance route URL"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: "{{ _mta_namespace }}"
+        name: parasol-insurance
+      register: r_mta_route
+
+    - name: Set parasol-insurance URL
+      ansible.builtin.set_fact:
+        _parasol_mta_url: "https://{{ r_mta_route.resources[0].spec.host }}"
+      when: r_mta_route.resources | default([]) | length > 0
+
+    - name: "S7: HTTP GET /api/claims (student verifies claims load)"
+      ansible.builtin.uri:
+        url: "{{ _parasol_mta_url }}/api/claims"
+        method: GET
+        validate_certs: false
+        status_code: [200, 500, 502, 503, 504]
+        timeout: 15
+        return_content: true
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "claims-{{ item }}"
+      register: r_claims
+      ignore_errors: true
+      when: _parasol_mta_url is defined
+
+    - name: "S7: HTTP GET /api/inbox (student verifies inbox)"
+      ansible.builtin.uri:
+        url: "{{ _parasol_mta_url }}/api/inbox"
+        method: GET
+        validate_certs: false
+        status_code: [200, 500, 502, 503, 504]
+        timeout: 15
+        return_content: true
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "inbox-{{ item }}"
+      register: r_inbox
+      ignore_errors: true
+      when: _parasol_mta_url is defined
+
+    # =================================================================
+    # LOAD: Additional HTTP hits on deployed app
+    # =================================================================
+
+    - name: "LOAD: Parasol UI root (exercises frontend rendering)"
+      ansible.builtin.uri:
+        url: "{{ _parasol_mta_url }}/"
+        method: GET
+        validate_certs: false
+        status_code: [200, 301, 302, 500, 502, 503, 504]
+        timeout: 15
+      loop: "{{ range(0, _load_iterations | int) | list }}"
+      loop_control:
+        label: "ui-{{ item }}"
+      register: r_ui_load
+      ignore_errors: true
+      when: _parasol_mta_url is defined
+
+    # =================================================================
+    # CLEANUP: Stop DevWorkspace (leave namespace for next run)
+    # =================================================================
+
+    - name: "CLEANUP: Stop mta-lab DevWorkspace"
+      kubernetes.core.k8s:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        state: patched
+        api_version: workspace.devfile.io/v1alpha2
+        kind: DevWorkspace
+        namespace: "{{ _tenant_user }}-devspaces"
+        name: mta-lab
+        definition:
+          spec:
+            started: false
+      ignore_errors: true
+
+    # =================================================================
+    # Summary
+    # =================================================================
+    - name: "E2E Module 5 — Student Workflow Summary"
+      ansible.builtin.debug:
+        msg: >-
+          Module 5 workflow complete for {{ _tenant_user }}:
+          DevWorkspace phase: {{ _dw_phase | default('skipped') }} |
+          DevWorkspace IDE: {{ r_dw_ide_check.status | default('skipped') }} |
+          DLS refactor calls: {{ r_dls_calls.results | default([]) | selectattr('failed', 'equalto', false) | list | length }}/3 ok |
+          DLS load calls: {{ r_dls_load.results | default([]) | selectattr('failed', 'equalto', false) | list | length }}/{{ _load_iterations }} ok |
+          GitLab EAP project: {{ 'found' if _gitlab_eap_project_id is defined else 'not found' }} |
+          Quarkus branch: {{ 'exists' if (r_quarkus_branch is defined and r_quarkus_branch.status | default(0) == 200) else 'missing' }} |
+          PostgreSQL deploy: {{ 'ok' if (r_pg_deploy is defined and r_pg_deploy is not failed) else 'failed/skipped' }} |
+          S2I build: {{ 'ok' if (r_build is defined and r_build is not failed) else 'failed/skipped' }} |
+          App rollout: {{ 'ok' if (r_app_rollout is defined and r_app_rollout is not failed) else 'failed/skipped' }} |
+          /api/claims: {{ r_claims.results | default([]) | selectattr('status', 'defined') | selectattr('status', 'equalto', 200) | list | length }}/{{ _load_iterations }} 200s |
+          /api/inbox: {{ r_inbox.results | default([]) | selectattr('status', 'defined') | selectattr('status', 'equalto', 200) | list | length }}/{{ _load_iterations }} 200s |
+          UI load: {{ r_ui_load.results | default([]) | selectattr('failed', 'equalto', false) | list | length }}/{{ _load_iterations }} ok

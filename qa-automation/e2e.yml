@@ -30,5 +30,5 @@
 # - name: "E2E — Module 2: TBD"
 #   ansible.builtin.import_playbook: e2e-module-02.yml
 
-# - name: "E2E — Module 5: TBD"
-#   ansible.builtin.import_playbook: e2e-module-05.yml
+- name: "E2E — Module 5: AI-powered migration using MTA"
+  ansible.builtin.import_playbook: e2e-module-05.yml

@@ -53,6 +53,7 @@
       - "{{ _tenant_user }}-parasol-web"
       - "{{ _tenant_user }}-showroom"
       - "{{ _tenant_user }}-devspaces"
+      - "{{ _tenant_user }}-ai-mta"
 
     # ArgoCD apps we expect per tenant
     tenant_argo_apps:
@@ -63,6 +64,7 @@
       - "{{ _tenant_user }}-parasol-insurance"
       - "{{ _tenant_user }}-parasol-troubleshooting"
       - "{{ _tenant_user }}-workload-m3"
+      - "{{ _tenant_user }}-workload-m5"
 
     # Deployments to check: namespace -> list of deployment names
     tenant_deployments:
@@ -375,6 +377,29 @@
       when: >-
         r_ls_deploy.resources | default([]) | length == 0
         or (r_ls_deploy.resources[0].status.availableReplicas | default(0)) < 1
+
+    # =========================================================================
+    # Check 6: Module 5 — DevWorkspace mta-lab exists
+    # =========================================================================
+
+    - name: "Check DevWorkspace mta-lab exists for {{ _tenant_user }}"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: workspace.devfile.io/v1alpha2
+        kind: DevWorkspace
+        namespace: "{{ _tenant_user }}-devspaces"
+        name: mta-lab
+      register: r_mta_dw
+      ignore_errors: true
+
+    - name: Record mta-lab DevWorkspace missing
+      ansible.builtin.set_fact:
+        healthcheck_failures: >-
+          {{ healthcheck_failures +
+             ['DevWorkspace mta-lab not found in ' + _tenant_user + '-devspaces'] }}
+      when: r_mta_dw.resources | default([]) | length == 0
 
     # =========================================================================
     # Summary
