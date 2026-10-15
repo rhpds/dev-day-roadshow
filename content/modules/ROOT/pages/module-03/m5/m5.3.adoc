@@ -203,7 +203,7 @@ TIP: If you haven't logged in yet, follow the xref:module-03/m2/m2.2.adoc[Rocket
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 Please, generate a customer profile for order 61356291
 ****
@@ -317,7 +317,7 @@ camel run * --local-kamelet-dir ../support/kamelets
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 Please, generate a customer profile for order 61356291
 ****

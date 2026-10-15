@@ -43,23 +43,6 @@ Try it yourself — run a simple query against the database (from your terminal 
 
 {blank}
 
-// [.copypaste]
-// ****
-// curl postgres.shared-database.svc:5432 \
-// -v --connect-timeout 3
-// ****
-
-// [TIP]
-// --
-// .What does this command do?
-// [%collapsible]
-// ====
-// * `postgres.shared-database.svc:5432` — target service, namespace, and PostgreSQL port
-// * `-v` — verbose, shows the connection attempt
-// * `--connect-timeout 3` — gives up after 3 seconds instead of hanging
-// ====
-// --
-
 [.copypaste]
 ****
 sql postgres.shared-database.svc:5432 \

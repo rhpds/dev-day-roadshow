@@ -38,14 +38,14 @@ image::module-03/m2/matrix-login-credentials.jpg[width=60%]
 +
 * **Username**
 +
-[.copypaste]
+[.copypaste.value]
 ****
 {user-username}
 ****
 +
 * **Password**
 +
-[.copypaste]
+[.copypaste.value]
 ****
 [.path]
 /credentials/im

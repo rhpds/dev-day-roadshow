@@ -139,14 +139,14 @@ image::module-03/m3/kaoto-kafka-steps.png[width=100%]
 +
 `Topic`:
 +
-[.copypaste]
+[.copypaste.value]
 ****
 myroom
 ****
 +
 `Brokers`:
 +
-[.copypaste]
+[.copypaste.value]
 ****
 my-cluster-kafka-bootstrap:9092
 ****
@@ -196,7 +196,7 @@ kaoto-datamapper-configure
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 pass:[.source \| test("rocketchat")]
 ****
@@ -278,7 +278,7 @@ Copy and Paste (in the *Target*) the values below to define the given field entr
 +
 ... `string[@key = channel]`:
 +
-[.copypaste]
+[.copypaste.value]
 ****
 [.path]
 /roomid
@@ -321,7 +321,7 @@ mapper-add-expression
 +
 ... `string[@key = text]`:
 +
-[.copypaste]
+[.copypaste.value]
 ****
 +++concat("*",/fn:map/fn:string[@key='user'], "@", /fn:map/fn:string[@key='source'],":* ", /fn:map/fn:string[@key='text'])+++
 ****

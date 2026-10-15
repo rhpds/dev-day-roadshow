@@ -37,7 +37,7 @@ spec:
     - {id: module-02, title: "The Trusted Build & Security Factory", duration_min: 35, status: not_started}
     - {id: module-03, title: "App Connectivity for AI", duration_min: 150, status: complete}
     - {id: module-04, title: "AI-Powered Troubleshooting", duration_min: 35, status: complete}
-    - {id: module-05, title: "AI-Driven App Modernization", duration_min: 35, status: not_started}
+    - {id: module-05, title: "AI-powered migration using MTA", duration_min: 55, status: complete}
   environment:
     platform: "ocp"            # ocp | rhel-vms — determines which sizing fields apply
     topology: "shared-cluster" # shared-cluster | per-student | cnv-pool

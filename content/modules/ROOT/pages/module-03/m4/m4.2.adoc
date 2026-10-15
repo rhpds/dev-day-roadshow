@@ -168,7 +168,7 @@ Then type a simple message:
 
 {blank}
 
-[.copypaste]
+[.copypaste.value]
 ****
 Hi
 ****
@@ -232,7 +232,7 @@ The `Dummy response` step is a placeholder — it always returns "Hello World". 
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 myagent
 ****
@@ -286,7 +286,7 @@ Switch back to your _Rocket.Chat_ window and type:
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 Hi again
 ****
@@ -311,7 +311,7 @@ Try asking for something specific:
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 Can you show me policy document 61356291
 ****
@@ -567,7 +567,7 @@ Go back to _Rocket.Chat_ and ask again:
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 Can you show me policy document 61356291
 ****
@@ -592,7 +592,7 @@ If that happens, try one or both of these options:
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 Please try again using the tool to get policy documents
 ****
@@ -638,7 +638,7 @@ The ai-bot can do more than just retrieve data — it can act on it. Imagine the
 
 {blank}
 
-[.copypaste]
+[.copypaste.value]
 ****
 The customer would like to remove the Roadside Assistance coverage, could you please adjust the policy document?
 ****
@@ -658,7 +658,7 @@ Notice the bot's response — it may suggest viewing the updated policy document
 
 {blank}
 
-[.copypaste]
+[.copypaste.value]
 ****
 Can you show me the updated policy document?
 ****
@@ -697,7 +697,7 @@ A customer support process rarely ends with a single action. Amending a policy i
 
 {blank}
 
-[.copypaste]
+[.copypaste.value]
 ****
 Could you please raise a ticket? Include the details explained, and ask the right departments to process the policy amendment accordingly.
 ****
@@ -721,7 +721,7 @@ The interaction above illustrates a simple request and response — but because 
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 Yes, please share it with the customer.
 ****
@@ -732,7 +732,7 @@ Yes, please share it with the customer.
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 Could you share the ticket with the customer?
 ****
@@ -779,14 +779,14 @@ Log in using the credentials below:
 
 * *Username*:
 +
-[.copypaste]
+[.copypaste.value]
 ****
 {user-username}
 ****
 
 * *Password*:
 +
-[.copypaste]
+[.copypaste.value]
 ****
 [.path]
 /credentials/im

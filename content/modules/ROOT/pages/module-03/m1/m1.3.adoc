@@ -284,35 +284,35 @@ Let's redefine the mapped fields with Parasol's hardcoded details. Replace the f
 --
 ... `Name` — the insurer's name
 +
-[.copypaste]
+[.copypaste.value]
 ****
 "Parasol Insurance"
 ****
 +
 ... `Street` — street address +
 +
-[.copypaste]
+[.copypaste.value]
 ****
 "One Parasol Plaza"
 ****
 +
 ... `City` +
 +
-[.copypaste]
+[.copypaste.value]
 ****
 "Atlanta"
 ****
 +
 ... `State` +
 +
-[.copypaste]
+[.copypaste.value]
 ****
 "GA"
 ****
 +
 ... `PostalCode`
 +
-[.copypaste]
+[.copypaste.value]
 ****
 "30313"
 ****

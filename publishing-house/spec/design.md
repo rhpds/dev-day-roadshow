@@ -34,6 +34,14 @@ The workshop is structured as a growing set of modules. Current content covers t
 4. Analyze CI/CD pipeline results and diagnose code quality failures reported by SonarQube
 5. Implement AI-assisted code quality fixes using the Zoo Code coding assistant to remediate code smells
 6. Deploy a feature to production by merging changes in GitLab and approving GitOps manifests in Red Hat OpenShift GitOps
+7. Secure the software supply chain from code to production by implementing automated compliance, security guardrails, and verifiable trust artifacts (SLSA Level 3) using Red Hat Advanced Developer Suite tools
+8. Build Apache Camel integrations for data ingestion with EDI-to-XML transformation and Service Interconnect
+9. Bridge messaging platforms via Kafka event-driven architecture and build an agentic AI support bot with Camel and MaaS
+10. Govern LLM access with Red Hat Connectivity Link (API key auth and token rate limiting)
+11. Use OpenShift's AI-powered agentic Lightspeed to interactively diagnose, monitor, and autonomously remediate application issues
+12. Analyze legacy Java EE workloads using the Migration Toolkit for Applications (MTA) with Developer Lightspeed AI-assisted refactoring
+13. Modernize legacy patterns (MDB, Stateless EJB, proprietary libraries) to Quarkus using MTA static analysis and AI-generated patches
+14. Deploy a fully modernized Quarkus application to Red Hat OpenShift
 
 <!-- Scale to duration: up to 3 objectives per 45 min of content. Start with action verbs: Configure, Deploy, Create, Implement, Troubleshoot, Monitor, Scale. Each should be testable. NOT: Understand, Learn, Know. -->
 
@@ -44,11 +52,16 @@ Lab (hands-on)
 ## Products & Technologies
 
 **Red Hat Products:**
-- Red Hat OpenShift Container Platform 4.20
+- Red Hat OpenShift Container Platform 5.0
 - Red Hat Developer Hub (with Lightspeed AI assistant)
 - Red Hat OpenShift Dev Spaces
 - Red Hat OpenShift Pipelines
 - Red Hat OpenShift GitOps
+- Red Hat Migration Toolkit for Applications (MTA) — with Developer Lightspeed (AI-powered code refactoring)
+- Red Hat Advanced Developer Suite
+- Red Hat Build of Quarkus
+- JBoss EAP 7 (legacy source application)
+- Red Hat Connectivity Link
 
 **Upstream / Third-party (on-cluster):**
 - GitLab — source control and merge request management
@@ -56,9 +69,12 @@ Lab (hands-on)
 - Zoo Code AI coding assistant — AI-assisted code remediation (backed by Qwen3 235b via MaaS)
 - Quarkus — Java microservices framework
 - Apache Kafka — event streaming (background infrastructure)
+- Apache Camel — integration framework (Module 3)
+- SmallRye Reactive Messaging / MicroProfile Reactive Messaging
+- PostgreSQL — production database for modernized application
 
 **Languages:**
-- Java, JSON, YAML
+- Java, JSON, YAML, AsciiDoc
 
 <!-- Use official names: "Red Hat OpenShift", not "OpenShift". List upstream projects separately. -->
 
@@ -66,14 +82,12 @@ Lab (hands-on)
 
 | Module | Title | Duration |
 |--------|-------|----------|
-| 1 | Explore the Platform | 20 min |
-| 2 | Develop a Feature | 25 min |
-| 3 | CI/CD Pipeline & Quality Gates | 15 min |
-| 4 | AI-Assisted Code Fix | 10 min |
-| 5 | GitOps Promotion & Production Deploy | 15 min |
-| — | **Total hands-on** | **85 min** |
-| — | Intro / orientation pages | ~15 min |
-| — | **Total lab** | **~100 min (~1.5 hr)** |
+| 1 | The Developer Experience | 85 min |
+| 2 | The Trusted Build & Security Factory | 35 min |
+| 3 | App Connectivity for AI | 150 min |
+| 4 | AI-Powered Troubleshooting | 35 min |
+| 5 | AI-powered migration using MTA | 55 min |
+| — | **Total hands-on** | **~360 min (~6 hr)** |
 
 <!-- Each module 10-30 min. Total: lab 1-4 hours, demo 15-45 min. Modules should build on each other. -->
 
@@ -98,7 +112,7 @@ Automation must provision:
 
 - **Cloud provider:** CNV
 - **Cluster type:** Multinode
-- **OCP version:** 4.20 (minimum)
+- **OCP version:** 5.0
 - **Topology:** Shared cluster — max 30 concurrent users, namespaced per participant
 - **Control plane:** 3 nodes — 16 vCPU, 64GB RAM each
 - **Workers:** 4 nodes — 32 vCPU, 64GB RAM, 100GB disk each

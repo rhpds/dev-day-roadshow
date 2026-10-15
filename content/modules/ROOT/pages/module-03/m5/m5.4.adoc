@@ -248,7 +248,7 @@ Time to see the fallback strategy in action.
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 Please, generate a customer profile for order 61356291
 ****
@@ -265,7 +265,7 @@ The previous request should have consumed the Gold token budget (approximately 5
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 Please try again
 ****
@@ -287,7 +287,7 @@ This confirms the fallback strategy in action: the Gold budget was consumed by t
 +
 {blank}
 +
-[.copypaste]
+[.copypaste.value]
 ****
 Please try again
 ****

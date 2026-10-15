@@ -108,6 +108,15 @@ a|
 image::module-03/intro/devspaces-trust-authors.png[Trust Workshop Project, , width=90%]
 |===
 +
+[TIP]
+======
+.Did you miss any of the notifications above?
+[%collapsible]
+====
+If so, the simplest solution is to close your browser tab (close your workspace tab) and re-open it, by repeating step 1. +
+The notifications will then be shown again.
+======
++
 NOTE: This IDE is based on _Microsoft VS Code_. It will look familiar if you have already used it.
 +
 {empty} +

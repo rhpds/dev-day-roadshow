@@ -32,14 +32,14 @@ image::module-03/m2/rchat-login-credentials.png[width=50%]
 +
 * **Email or username**
 +
-[.copypaste]
+[.copypaste.value]
 ****
 {user-username}
 ****
 +
 * **Password**
 +
-[.copypaste]
+[.copypaste.value]
 ****
 [.path]
 /credentials/im
