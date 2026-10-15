@@ -347,16 +347,14 @@
                       - name: QUARKUS_DATASOURCE_PASSWORD
                         value: parasol
                     readinessProbe:
-                      httpGet:
-                        path: /q/health/ready
-                        port: 8080
-                      initialDelaySeconds: 10
-                      periodSeconds: 5
-                    livenessProbe:
-                      httpGet:
-                        path: /q/health/live
+                      tcpSocket:
                         port: 8080
                       initialDelaySeconds: 15
+                      periodSeconds: 5
+                    livenessProbe:
+                      tcpSocket:
+                        port: 8080
+                      initialDelaySeconds: 20
                       periodSeconds: 10
       register: r_deploy_create
       ignore_errors: true
