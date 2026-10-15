@@ -356,6 +356,44 @@
       when: _gitlab_project_id is defined
 
     # -----------------------------------------------------------------
+    # Step 5b: Wait for Tekton pipelines to finish
+    # -----------------------------------------------------------------
+    - name: "WORKFLOW: Wait for PipelineRuns to complete (up to 10 min)"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: tekton.dev/v1
+        kind: PipelineRun
+        namespace: "{{ _tenant_user }}-build"
+      register: r_pipeline_wait
+      until: >-
+        r_pipeline_wait.resources | default([]) | length > 0
+        and (r_pipeline_wait.resources
+             | selectattr('status.conditions', 'defined')
+             | selectattr('status.conditions')
+             | rejectattr('status.conditions.0.status', 'equalto', 'True')
+             | list | length == 0)
+      retries: 30
+      delay: 20
+      ignore_errors: true
+
+    - name: "WORKFLOW: Wait for prod deployment rollout"
+      ansible.builtin.command:
+        cmd: >-
+          oc rollout status deployment/parasol-insurance
+          -n {{ _tenant_user }}-prod
+          --timeout=120s
+          {% if _use_sa_token | bool %}
+          --server={{ _api_url }}
+          --token={{ _k8s_api_key }}
+          --insecure-skip-tls-verify
+          {% endif %}
+      register: r_prod_rollout
+      ignore_errors: true
+      no_log: true
+
+    # -----------------------------------------------------------------
     # Step 6: Verify app endpoints (dev + prod)
     # -----------------------------------------------------------------
     - name: "WORKFLOW: Get dev parasol-insurance route"
@@ -390,10 +428,13 @@
         url: "{{ _dev_url }}/api/claims/stats"
         method: GET
         validate_certs: false
-        status_code: [200, 404]
+        status_code: [200]
         timeout: 15
         return_content: true
       register: r_stats_dev
+      until: r_stats_dev.status | default(0) == 200
+      retries: 6
+      delay: 10
       ignore_errors: true
 
     - name: "WORKFLOW: HTTP GET /api/claims/stats prod (student verifies go-live)"
@@ -401,10 +442,13 @@
         url: "{{ _prod_url }}/api/claims/stats"
         method: GET
         validate_certs: false
-        status_code: [200, 404]
+        status_code: [200]
         timeout: 15
         return_content: true
       register: r_stats_prod
+      until: r_stats_prod.status | default(0) == 200
+      retries: 6
+      delay: 10
       ignore_errors: true
 
     # -----------------------------------------------------------------
