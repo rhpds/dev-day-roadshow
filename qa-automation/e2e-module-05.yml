@@ -209,6 +209,7 @@
       ansible.builtin.command:
         cmd: >-
           oc new-app --template=postgresql-ephemeral
+          --param POSTGRESQL_VERSION=12
           --param POSTGRESQL_USER=parasol
           --param POSTGRESQL_PASSWORD=parasol
           --param POSTGRESQL_DATABASE=parasol
