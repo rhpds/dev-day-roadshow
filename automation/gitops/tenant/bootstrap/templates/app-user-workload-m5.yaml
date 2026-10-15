@@ -8,8 +8,6 @@ metadata:
     argocd.argoproj.io/sync-wave: "3"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
-    - pre-delete-finalizer.argocd.argoproj.io
-    - pre-delete-finalizer.argocd.argoproj.io/cleanup
 spec:
   destination:
     namespace: {{ .Values.argocd.namespace }}
@@ -22,7 +20,7 @@ spec:
         - /spec/started
   project: default
   source:
-    path: tenant/module5
+    path: automation/gitops/tenant/module5
     repoURL: {{ .Values.gitops.repoURL }}
     targetRevision: {{ .Values.gitops.targetRevision }}
     helm:
