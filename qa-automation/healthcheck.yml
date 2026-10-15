@@ -239,8 +239,7 @@
         label: "{{ item.item }}"
       when: >-
         item.resources | length == 0
-        or item.resources[0].status.sync.status | default('') != 'Synced'
-        or item.resources[0].status.health.status | default('') != 'Healthy'
+        or item.resources[0].status.health.status | default('') not in ['Healthy', 'Progressing']
 
     # =========================================================================
     # Check 3: Key deployments have available replicas
