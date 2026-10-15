@@ -76,63 +76,11 @@
       when: not (_use_sa_token | bool)
 
     # =================================================================
-    # SECTION 3: Start mta-lab DevWorkspace (exercises Dev Spaces scheduler)
-    # =================================================================
-
-    - name: "S3: Start mta-lab DevWorkspace"
-      kubernetes.core.k8s:
-        host: "{{ _k8s_host | default(omit, true) }}"
-        api_key: "{{ _k8s_api_key | default(omit, true) }}"
-        validate_certs: "{{ _k8s_validate_certs }}"
-        state: patched
-        api_version: workspace.devfile.io/v1alpha2
-        kind: DevWorkspace
-        namespace: "{{ _tenant_user }}-devspaces"
-        name: mta-lab
-        definition:
-          spec:
-            started: true
-      register: r_dw_start
-      ignore_errors: true
-
-    - name: "S3: Wait for DevWorkspace to reach Running phase (up to 5 min)"
-      kubernetes.core.k8s_info:
-        host: "{{ _k8s_host | default(omit, true) }}"
-        api_key: "{{ _k8s_api_key | default(omit, true) }}"
-        validate_certs: "{{ _k8s_validate_certs }}"
-        api_version: workspace.devfile.io/v1alpha2
-        kind: DevWorkspace
-        namespace: "{{ _tenant_user }}-devspaces"
-        name: mta-lab
-      register: r_dw_status
-      until: >-
-        r_dw_status.resources | length > 0
-        and r_dw_status.resources[0].status.phase | default('') == 'Running'
-      retries: 30
-      delay: 10
-      ignore_errors: true
-
-    - name: "S3: Record DevWorkspace phase"
-      ansible.builtin.set_fact:
-        _dw_phase: "{{ r_dw_status.resources[0].status.phase | default('Unknown') }}"
-        _dw_ide_url: "{{ r_dw_status.resources[0].status.mainUrl | default('') }}"
-      when: r_dw_status.resources | length > 0
-
-    - name: "S3: HTTP GET DevWorkspace IDE URL (exercises ingress)"
-      ansible.builtin.uri:
-        url: "{{ _dw_ide_url }}"
-        method: GET
-        validate_certs: false
-        status_code: [200, 301, 302, 401, 403]
-        timeout: 15
-        follow_redirects: none
-      register: r_dw_ide_check
-      ignore_errors: true
-      when: _dw_ide_url | default('') | length > 0
-
-    # =================================================================
     # SECTIONS 4-6: DLS AI-assisted refactoring (LiteLLM load on MaaS)
     # =================================================================
+    # Section 3 (DevWorkspace start) is skipped — the mta-lab workspace
+    # requires interactive student login (postStart hook injects OCP creds).
+    # Healthcheck validates the DevWorkspace exists; E2E tests the rest.
 
     - name: "S4-S6: LiteLLM DLS — MDB to Reactive Messaging refactoring"
       ansible.builtin.uri:
@@ -545,33 +493,12 @@
       when: _parasol_mta_url is defined
 
     # =================================================================
-    # CLEANUP: Stop DevWorkspace (leave namespace for next run)
-    # =================================================================
-
-    - name: "CLEANUP: Stop mta-lab DevWorkspace"
-      kubernetes.core.k8s:
-        host: "{{ _k8s_host | default(omit, true) }}"
-        api_key: "{{ _k8s_api_key | default(omit, true) }}"
-        validate_certs: "{{ _k8s_validate_certs }}"
-        state: patched
-        api_version: workspace.devfile.io/v1alpha2
-        kind: DevWorkspace
-        namespace: "{{ _tenant_user }}-devspaces"
-        name: mta-lab
-        definition:
-          spec:
-            started: false
-      ignore_errors: true
-
-    # =================================================================
     # Summary
     # =================================================================
     - name: "E2E Module 5 — Student Workflow Summary"
       ansible.builtin.debug:
         msg: >-
           Module 5 workflow complete for {{ _tenant_user }}:
-          DevWorkspace phase: {{ _dw_phase | default('skipped') }} |
-          DevWorkspace IDE: {{ r_dw_ide_check.status | default('skipped') }} |
           DLS refactor calls: {{ r_dls_calls.results | default([]) | selectattr('failed', 'equalto', false) | list | length }}/3 ok |
           DLS load calls: {{ r_dls_load.results | default([]) | selectattr('failed', 'equalto', false) | list | length }}/{{ _load_iterations }} ok |
           GitLab EAP project: {{ 'found' if _gitlab_eap_project_id is defined else 'not found' }} |
