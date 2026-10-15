@@ -255,7 +255,7 @@
       register: r_is_create
       ignore_errors: true
 
-    - name: "S7: Create BuildConfig for parasol-insurance"
+    - name: "S7: Create BuildConfig for parasol-insurance (S2I from Git)"
       kubernetes.core.k8s:
         host: "{{ _k8s_host | default(omit, true) }}"
         api_key: "{{ _k8s_api_key | default(omit, true) }}"
@@ -279,15 +279,12 @@
               git:
                 uri: "https://{{ _gitlab_host }}/{{ _tenant_user }}/parasol-insurance-eap.git"
                 ref: quarkus
-              contextDir: "."
-              sourceSecret:
-                name: gitlab-credentials
             strategy:
               type: Source
               sourceStrategy:
                 from:
                   kind: ImageStreamTag
-                  name: java:17-ubi8
+                  name: java:openjdk-17-ubi8
                   namespace: openshift
                 env:
                   - name: MAVEN_ARGS
