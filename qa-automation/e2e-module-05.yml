@@ -205,6 +205,42 @@
         - r_quarkus_branch is defined
         - r_quarkus_branch.status | default(0) == 404
 
+    - name: "S7: Cleanup existing parasol-insurance (idempotent re-run)"
+      ansible.builtin.command:
+        cmd: >-
+          oc delete deployment/parasol-insurance svc/parasol-insurance
+          route/parasol-insurance bc/parasol-insurance is/parasol-insurance
+          -n {{ _mta_namespace }} --ignore-not-found
+          {% if _use_sa_token | bool %}
+          --server={{ _api_url }}
+          --token={{ _k8s_api_key }}
+          --insecure-skip-tls-verify
+          {% endif %}
+      register: r_app_cleanup
+      ignore_errors: true
+      no_log: true
+      changed_when: "'deleted' in (r_app_cleanup.stdout | default(''))"
+
+    - name: "S7: Cleanup existing PostgreSQL (idempotent re-run)"
+      ansible.builtin.command:
+        cmd: >-
+          oc delete dc/parasol-db svc/parasol-db secret/parasol-db
+          -n {{ _mta_namespace }} --ignore-not-found
+          {% if _use_sa_token | bool %}
+          --server={{ _api_url }}
+          --token={{ _k8s_api_key }}
+          --insecure-skip-tls-verify
+          {% endif %}
+      register: r_pg_cleanup
+      ignore_errors: true
+      no_log: true
+      changed_when: "'deleted' in (r_pg_cleanup.stdout | default(''))"
+
+    - name: "S7: Wait for PostgreSQL cleanup"
+      ansible.builtin.pause:
+        seconds: 5
+      when: r_pg_cleanup is changed
+
     - name: "S7: Deploy PostgreSQL (student runs oc new-app --template=postgresql-ephemeral)"
       ansible.builtin.command:
         cmd: >-
