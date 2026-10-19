@@ -3,7 +3,7 @@ fullnameOverride: ""
 
 namespace: ""
 
-aiAssistantModel: qwen38-27b
+aiAssistantModel: claude-sonnet-4-6-a70b
 
 devEnvironments:
   startTimeoutSeconds: 300

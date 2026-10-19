@@ -12,7 +12,7 @@ images:
 llm:
   apiUrl: ""
   provider: openai
-  model: qwen38-27b
+  model: claude-sonnet-4-6-a70b
 
 vault:
   secretStore: vault-secret-store
