@@ -47,7 +47,7 @@ spec:
                   - name: VALIDATION_PROVIDER
                     value: vllm
                   - name: VALIDATION_MODEL_NAME
-                    value: qwen38-27b
+                    value: claude-sonnet-4-6-a70b
                 envFrom:
                   - secretRef:
                       name: llama-stack-secrets
