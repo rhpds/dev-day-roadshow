@@ -87,15 +87,6 @@
       "id": "redhat.mta-java"
     },
     {
-      "id": "redhat.mta-csharp"
-    },
-    {
-      "id": "redhat.mta-go"
-    },
-    {
-      "id": "redhat.mta-javascript"
-    },
-    {
       "id": "redhat.mta-vscode-extension"
     }
   ]
