@@ -53,6 +53,17 @@ gitlab:
           url: https://github.com/openshift-dev-days/parasol-catalog-entities.git
         - name: rhdh-templates
           url: https://github.com/openshift-dev-days/rhdh-templates.git
+        - name: parasol-insurance-secured
+          url: https://github.com/openshift-dev-days/parasol-insurance-secured.git
+          properties:
+            onlyMergeWhenPipelineSucceeds: true
+        - name: parasol-insurance-secured-manifests
+          url: https://github.com/openshift-dev-days/parasol-insurance-secured-manifests.git
+        - name: acs-policies
+          url: https://github.com/openshift-dev-days/acs-policies.git
+      syncRepo:
+        - name: conforma-policies
+          url: https://github.com/openshift-dev-days/conforma-policies.git
       users:
         - id: dev1
         - id: dev2
@@ -65,10 +76,16 @@ gitlab:
       templates:
         - devfile.yaml
     - group: parasol
+      project: parasol-insurance-secured
+      branch: main
+      templates:
+        - devfile.yaml
+    - group: parasol
       project: rhdh-templates
       branch: main
       templates:
         - templates/parasol-dev-environment/template.yaml
+        - templates/secured-parasol-dev-environment/template.yaml
 postgresql:
   dbUser: gitlab
   dbPassword: passw0rd

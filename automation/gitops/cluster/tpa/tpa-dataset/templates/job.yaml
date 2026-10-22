@@ -1,0 +1,123 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tpa-dataset-upload
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: tpa-dataset-upload
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: upload
+          image: {{ .Values.image }}
+          env:
+            - name: TPA_URL
+              value: "https://server.trusted-profile-analyzer.svc"
+            - name: KC_TOKEN_URL
+              value: "https://{{ .Values.keycloak.host }}/realms/{{ .Values.keycloak.realm }}/protocol/openid-connect/token"
+            - name: CLIENT_ID
+              value: {{ .Values.oidc.clientId | quote }}
+            - name: CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-cli
+                  key: client-secret
+            - name: DATASETS
+              value: {{ .Values.datasets | toJson | quote }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              echo "Waiting for TPA server to be ready..."
+              for i in $(seq 1 30); do
+                HTTP=$(curl -sk -o /dev/null -w "%{http_code}" "${TPA_URL}/.well-known/trustify" 2>/dev/null) || true
+                if [[ "$HTTP" =~ ^(200|401|403|404) ]]; then
+                  echo "TPA server is responding (HTTP ${HTTP})."
+                  break
+                fi
+                echo "  Attempt ${i}/30: TPA server not ready (HTTP ${HTTP:-none}), waiting 10s..."
+                sleep 10
+              done
+
+              echo "Requesting access token..."
+              TOKEN=""
+              for i in $(seq 1 12); do
+                RESPONSE=$(curl -sSk "$KC_TOKEN_URL" \
+                  -d "grant_type=client_credentials&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}" 2>&1)
+                TOKEN=$(echo "$RESPONSE" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("access_token",""))' 2>/dev/null) || true
+                if [[ -n "$TOKEN" ]]; then
+                  echo "Access token obtained."
+                  break
+                fi
+                echo "  Attempt ${i}/12: token request failed, waiting 10s..."
+                sleep 10
+              done
+
+              if [[ -z "$TOKEN" ]]; then
+                echo "Failed to obtain access token after 12 attempts."
+                exit 1
+              fi
+
+              FAILED=0
+              echo "$DATASETS" | python3 -c '
+              import json, sys
+              for d in json.load(sys.stdin):
+                  if d.get("url") and d.get("label"):
+                      print(d["label"] + "|" + d["url"])
+              ' | while IFS='|' read -r LABEL URL; do
+                echo ""
+                echo "============================================"
+                echo "Dataset: ${LABEL}"
+                echo "URL: ${URL}"
+                echo "============================================"
+
+                echo "Downloading ${LABEL}..."
+                curl -sSL -o /tmp/dataset.zip "$URL"
+                FILE_SIZE=$(du -h /tmp/dataset.zip | cut -f1)
+                echo "Downloaded ${FILE_SIZE}"
+
+                echo "Uploading ${LABEL} to ${TPA_URL}/api/v3/dataset?labels.importer=${LABEL} ..."
+                HTTP_CODE=$(curl -sk -o /tmp/response.json -w "%{http_code}" -X POST \
+                  "${TPA_URL}/api/v3/dataset?labels.importer=${LABEL}" \
+                  -H "Content-Type: application/zip" \
+                  -H "Authorization: Bearer ${TOKEN}" \
+                  --data-binary @/tmp/dataset.zip) || true
+
+                echo "HTTP response: ${HTTP_CODE:-unknown}"
+
+                if [[ "$HTTP_CODE" =~ ^2 ]]; then
+                  echo "${LABEL}: Upload and ingestion successful."
+                elif [[ "$HTTP_CODE" == "504" || -z "$HTTP_CODE" || "$HTTP_CODE" == "000" ]]; then
+                  echo "${LABEL}: Upload accepted (server processing in background)."
+                else
+                  echo "${LABEL}: Upload failed with HTTP ${HTTP_CODE}."
+                  cat /tmp/response.json 2>/dev/null || true
+                  FAILED=1
+                fi
+
+                rm -f /tmp/dataset.zip /tmp/response.json
+              done
+
+              if [[ "$FAILED" -ne 0 ]]; then
+                echo "One or more dataset uploads failed."
+                exit 1
+              fi
+
+              echo ""
+              echo "All dataset uploads completed."
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m

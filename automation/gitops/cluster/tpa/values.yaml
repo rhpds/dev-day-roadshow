@@ -1,0 +1,91 @@
+tpa-prereqs:
+  namespace: trusted-profile-analyzer
+  objectBucketClaim:
+    name: tpa-bucket-claim
+    bucketName: tpa-bucket
+    storageClassName: openshift-storage.noobaa.io
+  keycloak:
+    namespace: keycloak
+    host: ""
+    realm: sso
+  oidc:
+    clientId: tpa-cli
+    clientSecret: ""
+    frontendClientId: tpa-frontend
+  tpaRouteHost: ""
+  adminEmail: admin@demo.redhat.com
+
+tpa-postgresql:
+  namespace: trusted-profile-analyzer
+  image: registry.redhat.io/rhel10/postgresql-18
+  credentials:
+    dbHost: "tpa-postgresql"
+    dbName: "tpadb"
+    dbUser: "tpauser"
+    dbPassword: "r3dh8t1!"
+    dbAdmin: "postgres"
+    dbAdminPassword: "adminr3dh8t1!"
+    dbPort: "5432"
+  storage:
+    size: 30Gi
+
+tpa-server:
+  namespace: trusted-profile-analyzer
+  chartVersion: "3.1.1"
+  subdomain: ""
+  keycloak:
+    host: ""
+    realm: sso
+  oidc:
+    frontendClientId: tpa-frontend
+    cliClientId: tpa-cli
+  objectBucketClaim:
+    name: tpa-bucket-claim
+    bucketName: tpa-bucket
+  argocd:
+    namespace: openshift-gitops
+
+tpa-dataset:
+  namespace: trusted-profile-analyzer
+  datasets:
+    - url: "https://raw.githubusercontent.com/openshift-dev-days/tpa-datasets/main/cvelist-v5-parasol.zip"
+      label: "cvelist-v5"
+    - url: "https://raw.githubusercontent.com/openshift-dev-days/tpa-datasets/main/ghsa-parasol.zip"
+      label: "ghsa-osv"
+    - url: "https://raw.githubusercontent.com/openshift-dev-days/tpa-datasets/main/lightwell-parasol.zip"
+      label: "lightwell-osv"
+    - url: "https://raw.githubusercontent.com/openshift-dev-days/tpa-datasets/main/legacy-sboms.zip"
+      label: "legacy-sboms"
+  image: registry.redhat.io/ubi9/ubi
+  keycloak:
+    host: ""
+    realm: sso
+  oidc:
+    clientId: tpa-cli
+
+tpa-db-monitor:
+  namespace: trusted-profile-analyzer
+  image: quay.io/tssc_demos/tpa-db-monitor:latest
+  routeHost: ""
+
+tpa-rhda-backend:
+  namespace: rhda-backend
+  image: quay.io/tssc_demos/trustify-dependency-analytics:v3.1.0
+  initImage: registry.redhat.io/ubi9/openjdk-21-runtime:1.23
+  tpaNamespace: trusted-profile-analyzer
+  subdomain: ""
+  oidc:
+    clientId: tpa-cli
+    clientSecret: ""
+    keycloakHost: ""
+    realm: sso
+  postgresql:
+    image: registry.redhat.io/rhel10/postgresql-18
+    storage: 1Gi
+    database: trustify_da
+    username: trustify_da
+    password: "r3dh8t1!"
+  redis:
+    image: registry.redhat.io/rhel9/redis-7:latest
+    storage: 1Gi
+  routeHost: ""

@@ -24,6 +24,11 @@ secrets:
     clientSecret: ""
     pluginClientId: backstage-plugin
     pluginClientSecret: ""
+  rhacs:
+    clientId: rhacs
+    clientSecret: ""
+  tpa:
+    clientSecret: ""
   rhdh:
     argocdPassword: ""
     postgresqlPassword: ""

@@ -1,0 +1,14 @@
+namespace: trusted-profile-analyzer
+
+datasets:
+  - url: ""
+    label: ""
+
+image: registry.redhat.io/ubi9/ubi
+
+keycloak:
+  host: ""
+  realm: sso
+
+oidc:
+  clientId: tpa-cli

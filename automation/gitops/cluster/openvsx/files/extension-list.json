@@ -3,7 +3,8 @@
   "architecture": "linux-x64",
   "extensions": [
     {
-      "id": "redhat.vscode-microprofile"
+      "id": "redhat.vscode-microprofile",
+      "version": "0.18.0"
     },
     {
       "id": "redhat.fabric8-analytics"
@@ -18,22 +19,27 @@
       "id": "redhat.vscode-xml"
     },
     {
-      "id": "redhat.java"
+      "id": "redhat.java",
+      "version": "1.56.0"
     },
     {
-      "id": "redhat.vscode-quarkus"
+      "id": "redhat.vscode-quarkus",
+      "version": "1.24.0"
     },
     {
-      "id": "vscjava.vscode-java-debug"
+      "id": "vscjava.vscode-java-debug",
+      "version": "0.58.2"
     },
     {
-      "id": "vscjava.vscode-java-test"
+      "id": "vscjava.vscode-java-test",
+      "version": "0.43.1"
     },
     {
       "id": "redhat.vscode-tekton-pipelines"
     },
     {
-      "id": "vscjava.vscode-maven"
+      "id": "vscjava.vscode-maven",
+      "version": "0.44.0"
     },
     {
       "id": "streetsidesoftware.code-spell-checker"
@@ -81,13 +87,16 @@
       "id": "vscode.git"
     },
     {
-      "id": "redhat.mta-core"
+      "id": "redhat.mta-core",
+      "version": "8.3.1"
     },
     {
-      "id": "redhat.mta-java"
+      "id": "redhat.mta-java",
+      "version": "8.3.1"
     },
     {
-      "id": "redhat.mta-vscode-extension"
+      "id": "redhat.mta-vscode-extension",
+      "version": "8.3.1"
     }
   ]
 }

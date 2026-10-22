@@ -57,7 +57,17 @@ spec:
               value: https://console-openshift-console.{{ .Values.cluster.appsDomain }}/topology/ns/{{ include "module5.namespace" . }}?view=graph
             {{- end }}
             - name: VSCODE_TRUSTED_EXTENSIONS
-              value: "redhat.mta-vscode-extension,redhat.mta-core,redhat.mta-java,redhat.mta-csharp,redhat.mta-go,redhat.mta-javascript"
+              value: "redhat.mta-vscode-extension,redhat.mta-core,redhat.mta-java,redhat.mta-csharp,redhat.mta-go,redhat.mta-javascript,redhat.java"
+            {{- if .Values.cluster.appsDomain }}
+            - name: OPENVSX_REGISTRY_URL
+              value: https://open-vsx-server-che-openvsx.{{ .Values.cluster.appsDomain }}
+            {{- end }}
+            - name: VSCODE_DEFAULT_WORKSPACE
+              value: "/projects/{{ .Values.devworkspace.projectName }}/{{ .Values.devworkspace.projectName }}.code-workspace"
+            - name: JAVA_HOME
+              value: /usr/lib/jvm/java-21-openjdk
+            - name: JDK_HOME
+              value: /usr/lib/jvm/java-21-openjdk
             - name: HOST_USERS
               value: 'false'
             - name: OCP_USER

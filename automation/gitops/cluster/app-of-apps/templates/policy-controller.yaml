@@ -1,0 +1,13 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+{{ include "app-of-apps.metadata" (dict "name" .Values.policyController.name "namespace" .Values.argocd.namespace "syncWave" "1") }}
+spec:
+  destination:
+    namespace: {{ .Values.policyController.namespace }}
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: automation/gitops/cluster/policy-controller
+    repoURL: {{ .Values.gitops.repoURL }}
+    targetRevision: {{ .Values.gitops.targetRevision }}
+{{ include "app-of-apps.syncPolicy" . | indent 2 }}

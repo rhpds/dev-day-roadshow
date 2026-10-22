@@ -18,6 +18,15 @@ Experience the full developer journey on OpenShift -- from self-service onboardi
 
 [.tile]
 ****
+xref:module-02/00-intro.adoc[Module 2: Secured Software Supply Chain]
+
+Build and deploy applications through a SLSA Level 3 compliant software supply chain -- vulnerability scanning with RHDA and ACS, keyless commit signing with Sigstore, pipeline attestations with Tekton Chains, policy validation with Conforma, signed release approvals, and deployment enforcement with Policy Controller.
+
+**Duration**: ~90 minutes
+****
+
+[.tile]
+****
 xref:module-03/index.adoc[Module 3: Application Connectivity for AI]
 
 Build AI data flows using Red Hat's integration technologies -- EDI ingest with Service Interconnect, event-driven messaging with Kafka and Matrix/Rocket.Chat, Agentic Apache Camel for AI customer support, and LLM governance with Connectivity Link.

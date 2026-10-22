@@ -26,6 +26,9 @@ rules:
   - apiGroups: ["operator.tekton.dev"]
     resources: ["tektonconfigs"]
     verbs: ["get", "patch"]
+  - apiGroups: ["operator.tekton.dev"]
+    resources: ["tektoninstallersets"]
+    verbs: ["get", "list", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -76,11 +79,77 @@ spec:
               # Allow multiple PVCs per task pod. The default "workspaces" mode
               # rejects tasks that bind more than one PVC (e.g. sonar-scan with
               # source + maven-cache).
-              #
-              # Enable transparency log upload to the in-cluster Rekor server
-              # and deep inspection for per-task details in pipeline attestations.
               oc patch tektonconfig config --type merge \
                 -p '{"spec":{"pipeline":{"coschedule":"pipelineruns"}}}'
+              echo "Pipeline config patched"
+
+              # Configure Tekton Chains for keyless signing via TAS Fulcio/Rekor.
+              # The Chains controller uses its projected SA token (audience:
+              # trusted-artifact-signer) to obtain a short-lived signing cert
+              # from Fulcio, and logs signatures to Rekor for transparency.
+              FULCIO_URL="http://fulcio-server.trusted-artifact-signer.svc"
+              REKOR_URL="http://rekor-server.trusted-artifact-signer.svc"
+
+              oc patch tektonconfig config --type merge -p '{
+                "spec": {
+                  "chain": {
+                    "signers.x509.fulcio.enabled": true,
+                    "signers.x509.fulcio.address": "'"${FULCIO_URL}"'",
+                    "signers.x509.fulcio.issuer": "https://kubernetes.default.svc",
+                    "signers.x509.identity.token.file": "/var/run/sigstore/cosign/oidc-token",
+                    "transparency.enabled": true,
+                    "transparency.url": "'"${REKOR_URL}"'",
+                    "artifacts.pipelinerun.format": "in-toto",
+                    "artifacts.pipelinerun.storage": "oci",
+                    "artifacts.taskrun.format": "in-toto",
+                    "artifacts.taskrun.storage": "oci"
+                  }
+                }
+              }'
+              echo "Chains keyless signing configured (TektonConfig CR)"
+
+              # Update the OIDC token audience and attestation format on the
+              # Chains InstallerSet. The operator creates ConfigMaps and
+              # Deployments from the InstallerSet — patching the CR alone
+              # does not propagate to the InstallerSet.
+              # The operator hardcodes "sigstore" but TAS Fulcio requires
+              # "trusted-artifact-signer" as the audience.
+              echo "Patching Chains InstallerSets..."
+
+              # Patch the Deployment InstallerSet: OIDC audience
+              CHAIN_IS=$(oc get tektoninstallersets --no-headers | grep "^chain-" | grep -v "config\|secret" | awk '{print $1}')
+              if [ -n "${CHAIN_IS}" ]; then
+                oc get tektoninstallerset ${CHAIN_IS} -o json | \
+                  python3 -c "
+              import json, sys
+              data = json.load(sys.stdin)
+              for m in data['spec']['manifests']:
+                  if m.get('kind') == 'Deployment':
+                      for v in m['spec']['template']['spec']['volumes']:
+                          if v.get('name') == 'oidc-info':
+                              v['projected']['sources'][0]['serviceAccountToken']['audience'] = 'trusted-artifact-signer'
+              json.dump(data, sys.stdout)
+              " | oc replace -f - 2>/dev/null
+                echo "Chains InstallerSet audience updated to trusted-artifact-signer"
+              fi
+
+              # Patch the Config InstallerSet: attestation format
+              CHAIN_CFG_IS=$(oc get tektoninstallersets --no-headers | grep "^chain-config" | awk '{print $1}')
+              if [ -n "${CHAIN_CFG_IS}" ]; then
+                oc get tektoninstallerset ${CHAIN_CFG_IS} -o json | \
+                  python3 -c "
+              import json, sys
+              data = json.load(sys.stdin)
+              for m in data['spec']['manifests']:
+                  if m.get('kind') == 'ConfigMap' and m['metadata'].get('name') == 'chains-config':
+                      m['data']['artifacts.pipelinerun.format'] = 'in-toto'
+                      m['data']['artifacts.pipelinerun.storage'] = 'oci'
+                      m['data']['artifacts.taskrun.format'] = 'in-toto'
+                      m['data']['artifacts.taskrun.storage'] = 'oci'
+              json.dump(data, sys.stdout)
+              " | oc replace -f - 2>/dev/null
+                echo "Chains InstallerSet attestation format updated to slsa/v2alpha4"
+              fi
 
               echo "TektonConfig patched"
           resources:
