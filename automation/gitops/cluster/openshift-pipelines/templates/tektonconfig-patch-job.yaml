@@ -29,6 +29,9 @@ rules:
   - apiGroups: ["operator.tekton.dev"]
     resources: ["tektoninstallersets"]
     verbs: ["get", "list", "update"]
+  - apiGroups: ["operator.openshift.io"]
+    resources: ["consoles"]
+    verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -152,6 +155,18 @@ spec:
               fi
 
               echo "TektonConfig patched"
+
+              # Enable pipelines console plugin
+              PLUGIN_NAME="pipelines-console-plugin"
+              CURRENT=$(oc get console.operator.openshift.io cluster -o jsonpath='{.spec.plugins}' 2>/dev/null || echo "[]")
+              if echo "${CURRENT}" | grep -q "${PLUGIN_NAME}"; then
+                echo "Console plugin '${PLUGIN_NAME}' already enabled."
+              else
+                echo "Enabling console plugin '${PLUGIN_NAME}'..."
+                oc patch console.operator.openshift.io cluster --type=json \
+                  -p="[{\"op\":\"add\",\"path\":\"/spec/plugins/-\",\"value\":\"${PLUGIN_NAME}\"}]"
+                echo "Console plugin enabled."
+              fi
           resources:
             requests:
               cpu: 50m
