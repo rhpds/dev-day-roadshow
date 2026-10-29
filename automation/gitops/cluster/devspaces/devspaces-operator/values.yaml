@@ -8,8 +8,8 @@ devspaces:
     channel: stable
     installPlanApproval: Manual
     name: devspaces
-    source: redhat-operators
-    startingCSV: "devspacesoperator.v3.31.0"
+    source: redhat-operators-snapshot
+    startingCSV: "devspacesoperator.v3.30.2"
     sourceNamespace: openshift-marketplace
 
 argocd:
