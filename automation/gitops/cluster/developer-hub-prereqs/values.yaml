@@ -2,7 +2,7 @@ namespace: rhdh
 
 operator:
   channel: fast-1.9
-  startingCSV: rhdh-operator.v1.9.3
+  startingCSV: rhdh-operator.v1.9.9
   installPlanApproval: Automatic
   source: redhat-operators-snapshot
 
