@@ -231,6 +231,13 @@ data:
         - name: Import source repos into tenant projects
           ansible.builtin.shell: |
             set -e
+            # If the repo already has a main branch, skip the import. This
+            # avoids pushing to protected branches if the job fails in later
+            # steps and is retried by the backoff controller.
+            if git ls-remote --heads https://{{ "{{" }} gitlab_host {{ "}}" }}/{{ "{{" }} tenant_username {{ "}}" }}/{{ "{{" }} item {{ "}}" }}.git 2>/dev/null | grep -q refs/heads/main; then
+              echo "Repo {{ "{{" }} item {{ "}}" }} already has content, skipping import"
+              exit 0
+            fi
             rm -rf /tmp/{{ "{{" }} item {{ "}}" }}
             git clone --bare https://{{ "{{" }} gitlab_host {{ "}}" }}/parasol/{{ "{{" }} item {{ "}}" }}.git /tmp/{{ "{{" }} item {{ "}}" }}
             cd /tmp/{{ "{{" }} item {{ "}}" }}
@@ -386,6 +393,13 @@ data:
         - name: Import secured source repos into tenant projects
           ansible.builtin.shell: |
             set -e
+            # If the repo already has a main branch, skip the import. This
+            # avoids pushing to protected branches if the job fails in later
+            # steps and is retried by the backoff controller.
+            if git ls-remote --heads https://{{ "{{" }} gitlab_host {{ "}}" }}/{{ "{{" }} tenant_username {{ "}}" }}/{{ "{{" }} item {{ "}}" }}.git 2>/dev/null | grep -q refs/heads/main; then
+              echo "Repo {{ "{{" }} item {{ "}}" }} already has content, skipping import"
+              exit 0
+            fi
             rm -rf /tmp/{{ "{{" }} item {{ "}}" }}
             git clone --bare https://{{ "{{" }} gitlab_host {{ "}}" }}/parasol/{{ "{{" }} item {{ "}}" }}.git /tmp/{{ "{{" }} item {{ "}}" }}
             cd /tmp/{{ "{{" }} item {{ "}}" }}
