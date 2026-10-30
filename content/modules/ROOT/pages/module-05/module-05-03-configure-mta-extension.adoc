@@ -96,7 +96,7 @@ Since this is the first profile it will automatically be made active by the DLS 
 Review that you have the correct details as listed above and close this tab.
 
 
-The screenshot above shows that control next to **Open Analysis** click it and follow the instructions below.
+The screenshot above shows that control next to **Open Analysis Panel** click it and follow the instructions below.
 Open the GenAI provider settings from the MTA panel as shown in the next image.
 
 - *1* Click the settings `⚙︎` icon.
@@ -147,4 +147,4 @@ Confirm the Dev Spaces environment and MTA extension (including Developer Lights
 . Confirm the Dev Spaces workspace is pointing to the correct repository
 * Click on the file icon on the left side of the Dev Spaces environment
 * The File _EXPLORER_ lists the **parasol-insurance-eap** directory (your GitLab copy, not a shared sample)
-* Expand directories with the file explorer arrows if needed — you should see packages such as `com.parasol.mdb` (`EmailIntakeMDB`) and `com.parasol.ejb` (`ClaimService`)
+* Expand directories (e.g. into `src/main/java/com/parasol`) with the file explorer arrows if needed — you should see java packages and classes such as `com.parasol.mdb` (`EmailIntakeMDB`) and `com.parasol.ejb` (`ClaimService`)
