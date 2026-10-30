@@ -333,6 +333,7 @@ data:
                   - 200
                   - 201
                   - 400
+                  - 409
 
             - name: Remediation — re-unprotect main branch
               ansible.builtin.uri:
@@ -506,6 +507,7 @@ data:
                   - 200
                   - 201
                   - 400
+                  - 409
 
             - name: Remediation — re-unprotect main branch on secured repo
               ansible.builtin.uri:
