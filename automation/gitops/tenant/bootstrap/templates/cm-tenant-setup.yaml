@@ -228,16 +228,24 @@ data:
           retries: 5
           delay: 5
 
+        - name: Unprotect main branch before mirror push
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2F{{ "{{" }} item {{ "}}" }}/protected_branches/main
+            method: DELETE
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 204
+              - 404
+          loop:
+            - parasol-insurance
+            - parasol-insurance-eap
+            - parasol-insurance-manifests
+
         - name: Import source repos into tenant projects
           ansible.builtin.shell: |
             set -e
-            # If the repo already has a main branch, skip the import. This
-            # avoids pushing to protected branches if the job fails in later
-            # steps and is retried by the backoff controller.
-            if git ls-remote --heads https://{{ "{{" }} gitlab_host {{ "}}" }}/{{ "{{" }} tenant_username {{ "}}" }}/{{ "{{" }} item {{ "}}" }}.git 2>/dev/null | grep -q refs/heads/main; then
-              echo "Repo {{ "{{" }} item {{ "}}" }} already has content, skipping import"
-              exit 0
-            fi
             rm -rf /tmp/{{ "{{" }} item {{ "}}" }}
             git clone --bare https://{{ "{{" }} gitlab_host {{ "}}" }}/parasol/{{ "{{" }} item {{ "}}" }}.git /tmp/{{ "{{" }} item {{ "}}" }}
             cd /tmp/{{ "{{" }} item {{ "}}" }}
@@ -390,16 +398,23 @@ data:
           retries: 5
           delay: 5
 
+        - name: Unprotect main branch on secured repos before mirror push
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2F{{ "{{" }} item {{ "}}" }}/protected_branches/main
+            method: DELETE
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 204
+              - 404
+          loop:
+            - parasol-insurance-secured
+            - parasol-insurance-secured-manifests
+
         - name: Import secured source repos into tenant projects
           ansible.builtin.shell: |
             set -e
-            # If the repo already has a main branch, skip the import. This
-            # avoids pushing to protected branches if the job fails in later
-            # steps and is retried by the backoff controller.
-            if git ls-remote --heads https://{{ "{{" }} gitlab_host {{ "}}" }}/{{ "{{" }} tenant_username {{ "}}" }}/{{ "{{" }} item {{ "}}" }}.git 2>/dev/null | grep -q refs/heads/main; then
-              echo "Repo {{ "{{" }} item {{ "}}" }} already has content, skipping import"
-              exit 0
-            fi
             rm -rf /tmp/{{ "{{" }} item {{ "}}" }}
             git clone --bare https://{{ "{{" }} gitlab_host {{ "}}" }}/parasol/{{ "{{" }} item {{ "}}" }}.git /tmp/{{ "{{" }} item {{ "}}" }}
             cd /tmp/{{ "{{" }} item {{ "}}" }}
