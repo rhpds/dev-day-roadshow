@@ -93,13 +93,13 @@ image::module-05-mta-dls/05-05-dls-01.jpg[Open Profile Manager from Get Ready to
 +
 image::module-05-mta-dls/05-05-dls-02.jpg[Upload Custom Rules in Profile Settings,link=self,window=blank,title="Custom Rules"]
 
-. Activate the profile so it is the one used for the next analysis run.
+. Since we only have one profile `quarkus-profile`, it should already be (active). 
 
 IMPORTANT: If you only run `quarkus-profile` without the custom rules path or upload, you will still see Java EE → Quarkus findings (MDB, EJB, and so on), but you will **miss** the audit library incidents. Custom rules and stock rules complement each other.
 
 == Exercise 3: Run analysis and inspect custom findings
 
-. Congratulations on completing exercise 3! now it's time to run analysis. Since we are using the same active profile as before `quarkus-profile`. head to the analysis panel again and run the analysis.
+. Congratulations on completing exercise 3! now it's time to run analysis. Since we are using the same active profile as before `quarkus-profile`. head to the analysis panel again and run the analysis. The server would have already stopped. This is be design, as we make changes to our profile, we want the server to pick up those changes again. Press `Start` button to start the server and then run the `Analysis` again.
 
 . When the Analysis panel populates, filter or search for findings related to **audit** / **`Audit`**. Expand incidents and confirm you can map them back to the rule IDs you read in `logging.yaml`. At minimum you should see a **dependency** finding for `audit-logging-library` **1.0.0** in `pom.xml` (rule `audit-logging-0001`).
 
