@@ -70,7 +70,9 @@ Developer Lightspeed can request a fix for a single issue, but it can also reque
 +
 image::module-05-mta-dls/05-04-dls-02.jpg[EmailIntakeMDB file selection,link=self,window=blank,title="EmailIntakeMDB"]
 
-. Next click on the `AI` dropdown as shown in the image below and click `Get Solution`. This will trigger a new tab that will now send the entire context to the LLM. The context includes the issue itself, but it also includes more details like examples, and what is expected as a fix. This approach helps engineer the context in a way which is more specific to the requirements. A chat-bot would usually be a free flow of questions and messages. Here the context is prepared by Developer Lightspeed based on the static code analysis, in order to get the best results without wasting time or tokens.
+. Next click on the `AI` dropdown **next to the `EmailIntakeMDB.java` filename** as shown in the image below and click `Get Solution`. This will trigger a new tab that will now send the entire context to the LLM. The context includes the issue itself, but it also includes more details like examples, and what is expected as a fix. This approach helps engineer the context in a way which is more specific to the requirements. A chat-bot would usually be a free flow of questions and messages. Here the context is prepared by Developer Lightspeed based on the static code analysis, in order to get the best results without wasting time or tokens.
++
+CAUTION: Make sure you click the `AI` dropdown next to the **file name** (`EmailIntakeMDB.java`), not the one at the top of the Analysis Results panel. Clicking the top-level dropdown will analyze the entire application across all files, which takes much longer and is not what we want for this exercise.
 
 image::module-05-mta-dls/05-04-dls-03.jpg[EmailIntakeMDB Get Solution,link=self,window=blank,title="EmailIntakeMDB"]
 
@@ -130,7 +132,7 @@ image::module-05-mta-dls/05-04-dls-05.jpg[EmailIntakeMDB git patch,link=self,win
 
 You can now close the review editor, press "Save" and then "Accept" to apply the patch.
 
-== What we learnt
+== What we learned
 
 * **Concepts:** How legacy JMS and MDB-style messaging differs from SmallRye Reactive Messaging on Quarkus—reactive streams, non-blocking handling, and typical cloud-native benefits (fewer threads, easier scaling, simpler code than heavy EJB and JMS configuration).
 * **Tooling:** How Developer Lightspeed in the MTA extension pairs static analysis with an LLM to suggest concrete refactors from Java EE and Jakarta EE patterns toward Quarkus.

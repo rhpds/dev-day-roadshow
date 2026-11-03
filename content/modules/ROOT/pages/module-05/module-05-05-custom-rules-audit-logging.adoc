@@ -99,7 +99,7 @@ IMPORTANT: If you only run `quarkus-profile` without the custom rules path or up
 
 == Exercise 3: Run analysis and inspect custom findings
 
-. Congratulations on completing exercise 3! now it's time to run analysis. Since we are using the same active profile as before `quarkus-profile`. head to the analysis panel again and run the analysis. The server would have already stopped. This is be design, as we make changes to our profile, we want the server to pick up those changes again. Press `Start` button to start the server and then run the `Analysis` again.
+. Congratulations on completing exercise 3! now it's time to run analysis. Since we are using the same active profile as before `quarkus-profile`. head to the analysis panel again and run the analysis. The server would have already stopped. This is by design — when you change a profile, the server stops so it can pick up the changes on restart. Press `Start` button to start the server and then run the `Analysis` again.
 
 . When the Analysis panel populates, filter or search for findings related to **audit** / **`Audit`**. Expand incidents and confirm you can map them back to the rule IDs you read in `logging.yaml`. At minimum you should see a **dependency** finding for `audit-logging-library` **1.0.0** in `pom.xml` (rule `audit-logging-0001`).
 
@@ -121,7 +121,7 @@ image::module-05-mta-dls/05-05-dls-06.jpg[Review AuditEvent migration patch,link
 
 NOTE: Read each finding **message** carefully. Notice how the rule text is written for humans *and* for Developer Lightspeed: clear intent (“upgrade to 2.0.0”, “use `logEventAsync`”, and so on) without requiring the model to invent Parasol policy from scratch. Custom-library upgrades can imply Java level and API changes beyond a single version number — review diffs before accepting.
 
-== What we learnt
+== What we learned
 
 * **Gap in stock rules:** Public Quarkus / Java EE rulesets do not understand proprietary libraries such as `audit-logging-library`.
 * **Custom rules structure:** Rule files such as `logging.yaml` use `when:` conditions and actionable `message:` text that MTA (and Developer Lightspeed) can act on.

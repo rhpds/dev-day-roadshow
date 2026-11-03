@@ -43,7 +43,7 @@ git log -2 --oneline
 +
 You should see `quarkus` as the current branch.
 
-TIP: If Dev Spaces prompts you to reload the window after the branch switch, accept the reload so the Java / Quarkus tooling picks up the new `pom.xml`.
+TIP: If Dev Spaces prompts you to reload the window after the branch switch, accept the reload so the Java / Quarkus tooling picks up the new `pom.xml`. You may also see red error markers from MTA analysis reports left over from the previous branch — these will clear as the language server refreshes.
 
 == Exercise 2: Review the migrated code
 
@@ -168,6 +168,8 @@ oc new-app --template=postgresql-ephemeral \
   -p POSTGRESQL_DATABASE=parasol \
   -p POSTGRESQL_VERSION=12-el8
 ----
++
+NOTE: You may see a warning about `DeploymentConfig` being deprecated. This is expected on OpenShift 5 and can be safely ignored — the PostgreSQL template still works correctly.
 
 . Wait until the database is ready:
 +
@@ -262,7 +264,7 @@ Select **`parasol-insurance`**, open the **Resources** side panel, and check:
 
 . Contrast this with the legacy EAP approach (`java:jboss/datasources/ParasolDS`, `jboss-all.xml` JMS queue definitions). Quarkus moves runtime wiring into **application config + Kubernetes env**, which is easier to GitOps and promote across environments.
 
-== What we learnt
+== What we learned
 
 * The **`quarkus`** branch is the completed migration target for the patterns you practiced with MTA / DLS.
 * Messaging, CDI services, scheduling, and REST all use Quarkus / MicroProfile idioms (`@Incoming`, `@Channel`, `@Scheduled`, `@ApplicationScoped`).
