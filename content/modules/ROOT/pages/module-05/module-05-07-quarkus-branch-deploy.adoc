@@ -64,29 +64,38 @@ Walk the same classes you touched earlier and compare them to the Quarkus implem
 
 . Open `src/main/java/com/parasol/mdb/EmailIntakeMDB.java`.
 +
+--
 Confirm the migration outcomes from Section 4:
+
 * `@ApplicationScoped` instead of `@MessageDriven`
 * `@Inject` instead of `@EJB`
 * `@Incoming("email-intake")` instead of JMS `MessageListener` / activation config
 * `jakarta.*` imports
+--
 
 === Business services: `ClaimService`
 
 . Open `src/main/java/com/parasol/ejb/ClaimService.java`.
 +
+--
 Confirm the migration outcomes from Section 6:
+
 * `@ApplicationScoped` + `@Transactional` instead of `@Stateless`
 * `@Inject EntityManager` instead of `@PersistenceContext`
 * No `javax.ejb` usage
+--
 
 === Scheduling: `EmailGeneratorBean`
 
 . Open `src/main/java/com/parasol/ejb/EmailGeneratorBean.java`.
 +
+--
 Note how the old EJB timer / JMS producer path became Quarkus-native:
+
 * `@Scheduled(...)` instead of `TimerService` / `@Timeout`
 * `@Channel("email-intake") Emitter<String>` instead of JMS `ConnectionFactory` / `Queue`
 * Still `@ApplicationScoped`, feeding the same `email-intake` channel the MDB consumes
+--
 
 === REST layer
 
