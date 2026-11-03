@@ -6,7 +6,7 @@ namespace: ""
 devspaces:
   subscription:
     channel: stable
-    installPlanApproval: Manual
+    installPlanApproval: Automatic
     name: devspaces
     source: redhat-operators-snapshot
     startingCSV: "devspacesoperator.v3.30.2"
