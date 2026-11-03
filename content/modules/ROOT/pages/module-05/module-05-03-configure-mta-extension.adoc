@@ -55,6 +55,8 @@ CAUTION: If a message indicates authentication is required again, switch back to
 +
 image::module-05-mta-dls/05-03-dls-02.jpg[Open Workspace,link=self,window=blank,title="Open Workspace"]
 
+. If this is your first time opening Dev Spaces, you may be redirected to **GitLab** to establish OAuth credentials. Log in with your workshop credentials (`{user}` / `{password}`) and click **Authorize** when prompted. This allows Dev Spaces to clone repositories from GitLab on your behalf.
+
 . Wait for the workspace to initialize and open:
 +
 The **parasol-insurance-eap** repository (from your GitLab project) loads in Dev Spaces and the development environment is ready.
