@@ -236,7 +236,7 @@ curl -sk "https://${ROUTE}/api/claims" | jq .
 curl -sk "https://${ROUTE}/api/inbox" | jq .
 ----
 
-. In the OpenShift console, open your project **Topology** (or **Workloads → Deployments**) and confirm the application is running.
+. In the OpenShift console, open your project {user}-ai-mta **Topology** (or **Workloads → Deployments**) and confirm the application is running.
 +
 image::module-05-mta-dls/05-07-dls-07.jpg[OpenShift Topology showing parasol-insurance Quarkus deployment and Route,link=self,window=blank,title="OpenShift Topology"]
 +
@@ -252,7 +252,6 @@ Select **`parasol-insurance`**, open the **Resources** side panel, and check:
 * **Services** — `parasol-insurance`
 * **Routes** — the public URL for the app (click it to open the Parasol UI in the browser, same as the `oc get route` host from the previous step)
 +
-Also peek at the Deployment env vars and confirm they match what you applied from `openshift/deployment.yaml` (`POSTGRESQL_*` from Secret `parasol-db`).
 
 == Exercise 5: Review what changed in production config
 
