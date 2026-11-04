@@ -88,7 +88,7 @@ The post-merge build created a signed image from the `main` branch. To promote i
 
 === Exercise 1: Create a tag
 
-. In GitLab, navigate to **Repository** → **Tags**.
+. In GitLab, find the `{user}/parasol-insurance-secured` repo and navigate to **Code** → **Tags**.
 
 . Click **New tag**.
 
