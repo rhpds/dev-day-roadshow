@@ -1,6 +1,9 @@
 ---
 # Use a Pod: some policy-controller versions validate Pods but not Deployments.
 # Server-side dry-run invokes admission without leaving a workload behind.
+- name: Validate the immutable admission input
+  ansible.builtin.include_tasks: module2-assert-image.yml
+
 - name: "Test admission for {{ _m2_admission_image }}"
   ansible.builtin.command:
     argv: [oc, create, --dry-run=server, -f, '-']

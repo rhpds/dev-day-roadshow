@@ -1,0 +1,17 @@
+---
+- name: Record missing Module 2 prerequisites
+  ansible.builtin.set_fact:
+    healthcheck_failures: >-
+      {{ healthcheck_failures + ['Module 2: ' ~ item.item.kind ~ ' ' ~
+         (item.item.namespace | default('cluster')) ~ '/' ~ item.item.name ~ ' missing or unreadable'] }}
+  loop: "{{ _m2_health_lookups.results }}"
+  loop_control:
+    label: "{{ item.item.kind }}/{{ item.item.name }}"
+  when:
+    - item.resources | default([]) | length != 1
+    - >-
+      not (_m2_prod_release_pending | default(false) | bool
+           and item.item.kind == 'Deployment'
+           and item.item.name == 'parasol-insurance'
+           and item.item.namespace | default('') == _tenant_user ~ '-secured-prod')
+  no_log: true

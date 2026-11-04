@@ -1,0 +1,32 @@
+---
+- name: Set application snapshot for this startup case
+  ansible.builtin.set_fact:
+    healthcheck_failures: []
+    r_argo_checks:
+      results:
+        - item: user-example-secured-prod
+          resources: "{{ [] if startup_case.missing_app | default(false) else [startup_case.prod | default(_startup_prod)] }}"
+        - item: user-example-preprod
+          resources:
+            - metadata: {name: user-example-preprod}
+              status:
+                sync: {status: Synced}
+                health: {status: "{{ startup_case.preprod_health | default('Healthy') }}"}
+    _m2_health_lookups:
+      results: "{{ startup_case.prerequisites | default([]) }}"
+
+- name: Classify the actual startup logic
+  ansible.builtin.include_tasks: ../tasks/classify-module2-startup.yml
+
+- name: Apply the actual ArgoCD healthcheck decisions
+  ansible.builtin.include_tasks: ../tasks/health-record-argo.yml
+
+- name: Apply the actual missing-resource decisions
+  ansible.builtin.include_tasks: ../tasks/health-record-module2-resources.yml
+
+- name: "Verify startup case {{ startup_case.name }}"
+  ansible.builtin.assert:
+    that:
+      - (_m2_prod_release_pending | bool) == (startup_case.pending | default(false) | bool)
+      - healthcheck_failures | length == startup_case.failures
+    fail_msg: "{{ startup_case.name }}: {{ healthcheck_failures }}"

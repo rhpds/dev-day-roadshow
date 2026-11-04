@@ -1,0 +1,14 @@
+---
+- name: Require preprod to serve the newly built digest before release tagging
+  ansible.builtin.assert:
+    that:
+      - >-
+        _m2_preprod_pods.resources | default([])
+        | selectattr('status.containerStatuses', 'defined')
+        | map(attribute='status.containerStatuses') | flatten
+        | selectattr('name', 'equalto', 'parasol-insurance')
+        | selectattr('ready', 'defined') | selectattr('ready', 'equalto', true)
+        | selectattr('imageID', 'defined')
+        | selectattr('imageID', 'search', '(^|@)' ~ _m2_build_results.IMAGE_DIGEST ~ '$')
+        | list | length > 0
+    fail_msg: Preprod must have a ready application container using the current build digest, not an old image.

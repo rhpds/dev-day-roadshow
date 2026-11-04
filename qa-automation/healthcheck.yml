@@ -234,19 +234,19 @@
           ansible.builtin.set_fact:
             r_argo_checks: "{{ r_argo_recheck }}"
 
-    - name: Record unhealthy ArgoCD apps
-      ansible.builtin.set_fact:
-        healthcheck_failures: >-
-          {{ healthcheck_failures +
-             ['ArgoCD app ' + item.item + ' is ' +
-              (item.resources[0].status.sync.status | default('Unknown')) + '/' +
-              (item.resources[0].status.health.status | default('Unknown'))] }}
-      loop: "{{ r_argo_checks.results }}"
-      loop_control:
-        label: "{{ item.item }}"
-      when: >-
-        item.resources | length == 0
-        or item.resources[0].status.health.status | default('') not in ['Healthy', 'Progressing']
+    - name: Classify the known Module 2 pre-release production gate
+      ansible.builtin.import_tasks: tasks/classify-module2-startup.yml
+
+    - name: Record unhealthy applications without hiding unrelated failures
+      ansible.builtin.import_tasks: tasks/health-record-argo.yml
+
+    - name: Report the expected first-release production gate
+      ansible.builtin.debug:
+        msg: >-
+          EXPECTED: {{ _tenant_user }}-secured-prod awaits its first promoted image digest.
+          Policy Controller rejected only the initial :1.0 application Deployment;
+          its absence is not a provisioning failure. Preprod is still checked normally.
+      when: _m2_prod_release_pending | bool
 
     # =========================================================================
     # Check 3: Key deployments have available replicas
@@ -439,6 +439,7 @@
       when:
         - item.resources | length > 0
         - item.resources[0].status.sync.status | default('') != 'Synced'
+        - not (item.item == _tenant_user ~ '-secured-prod' and _m2_prod_release_pending | bool)
 
     # =========================================================================
     # Summary
