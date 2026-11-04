@@ -11,6 +11,8 @@ OpenShift Dev Day Roadshow is a modular, hands-on customer workshop delivered as
 
 The workshop is structured as a growing set of modules. Current content covers the full inner and outer loop developer journey (Developer Hub, Dev Spaces, Pipelines, GitOps with AI assistance). Planned additional modules cover Red Hat Application Foundations and Red Hat Connectivity Link — expanding the workshop's footprint across the full platform stack and further differentiating it from demo-only assets in the catalog. Participants work through realistic developer tasks: exploring a software catalog with an AI assistant, creating a cloud development environment, writing and shipping a feature through CI/CD, and deploying to production with GitOps.
 
+Module 2, **Secured Software Supply Chain**, is now authored. It extends the Parasol scenario through a secured sandbox, RHDA dependency remediation, keyless commit signing, ACS checks, Chains/SLSA evidence, Conforma validation, signed release approval, SBOM upload, GitOps promotion, and namespace admission enforcement. Learners use preconfigured platform controls rather than installing the security stack.
+
 ## Target Audience
 
 - **Role:** Red Hat sellers and solutions engineers delivering customer-facing workshops; application developers and platform engineers evaluating or adopting OpenShift as a developer platform
@@ -34,7 +36,13 @@ The workshop is structured as a growing set of modules. Current content covers t
 4. Analyze CI/CD pipeline results and diagnose code quality failures reported by SonarQube
 5. Implement AI-assisted code quality fixes using the Zoo Code coding assistant to remediate code smells
 6. Deploy a feature to production by merging changes in GitLab and approving GitOps manifests in Red Hat OpenShift GitOps
-7. Secure the software supply chain from code to production by implementing automated compliance, security guardrails, and verifiable trust artifacts (SLSA Level 3) using Red Hat Advanced Developer Suite tools
+7. Verify the secured software supply chain from a developer change through production promotion using Red Hat Advanced Developer Suite tools:
+   - Remediate dependency findings with RHDA and container base-image findings with a hardened runtime.
+   - Sign commits with the learner's Sigstore identity and inspect signature evidence.
+   - Compare informational sandbox feedback with enforced signature and ACS MR gates.
+   - Inspect Chains image signatures and SLSA provenance, and distinguish Conforma warnings from blocking violations.
+   - Submit a signed release approval, inspect the uploaded TPA SBOM, and merge the production GitOps MR.
+   - Test admission rejection of unsigned/unapproved images and verify the legitimate approved deployment.
 8. Build Apache Camel integrations for data ingestion with EDI-to-XML transformation and Service Interconnect
 9. Bridge messaging platforms via Kafka event-driven architecture and build an agentic AI support bot with Camel and MaaS
 10. Govern LLM access with Red Hat Connectivity Link (API key auth and token rate limiting)
@@ -59,6 +67,11 @@ Lab (hands-on)
 - Red Hat OpenShift GitOps
 - Red Hat Migration Toolkit for Applications (MTA) — with Developer Lightspeed (AI-powered code refactoring)
 - Red Hat Advanced Developer Suite
+- Red Hat Dependency Analytics — dependency findings and remediation guidance (Module 2)
+- Red Hat Trusted Artifact Signer — keyless signing infrastructure (Module 2)
+- Red Hat Trusted Profile Analyzer — vulnerability intelligence and SBOM analysis (Module 2)
+- Red Hat Advanced Cluster Security for Kubernetes — image scans and policy gates (Module 2)
+- Red Hat Quay — image, signature, and attestation storage (Module 2)
 - Red Hat Build of Quarkus
 - JBoss EAP 7 (legacy source application)
 - Red Hat Connectivity Link
@@ -72,6 +85,12 @@ Lab (hands-on)
 - Apache Camel — integration framework (Module 3)
 - SmallRye Reactive Messaging / MicroProfile Reactive Messaging
 - PostgreSQL — production database for modernized application
+- Sigstore gitsign, Fulcio, Rekor, and TUF — developer identity and signing trust (Module 2)
+- Tekton Chains — image signatures and build provenance (Module 2)
+- Conforma / Enterprise Contract — promotion-policy validation (Module 2)
+- Sigstore Policy Controller — namespace admission enforcement (Module 2)
+- Syft — SBOM generation for TPA upload (Module 2)
+- Keycloak SSO and the Parasol Release Approval application — signed human approval (Module 2)
 
 **Languages:**
 - Java, JSON, YAML, AsciiDoc
@@ -83,11 +102,25 @@ Lab (hands-on)
 | Module | Title | Duration |
 |--------|-------|----------|
 | 1 | The Developer Experience | 85 min |
-| 2 | The Trusted Build & Security Factory | 35 min |
+| 2 | Secured Software Supply Chain | 90 min planning budget; guide estimates 60–90 min |
 | 3 | App Connectivity for AI | 150 min |
 | 4 | AI-Powered Troubleshooting | 35 min |
 | 5 | AI-powered migration using MTA | 55 min |
-| — | **Total hands-on** | **~360 min (~6 hr)** |
+| — | **Total planning budget** | **~415 min (~6 hr 55 min)** |
+
+Module 2's five timed sections total 75 minutes; its 90-minute planning budget allows for SSO, analysis, pipeline, and reconciliation waits within the guide's 60–90 minute estimate. The two-hour event format selects a subset of this modular catalog; the table is not a promise to complete every module in one event.
+
+### Module 2 Flow and Evidence
+
+| Section | Learner action | Expected evidence |
+|---|---|---|
+| Dealing with Vulnerabilities Early — 15 min | Discover the secured component, create its branch sandbox, inspect RHDA findings, and update framework dependencies | Isolated sandbox and initial pipeline; dependency report changes after remediation |
+| Signing Your Commits — 10 min | Complete the gitsign/Keycloak flow, commit, and push | Identity-bound commit signature and inspectable certificate details; GitLab's unverified badge is not itself a Sigstore verdict |
+| Checking the Sandbox Pipeline — 15 min | Inspect signature/ACS reports and replace the vulnerable base image | Informational sandbox results and GitLab commit report; new scan results after hardening |
+| Moving to the Next Stages — 25 min | Pass enforced MR checks, merge and wait for the build, tag, inspect Conforma failure, approve, retry promotion, and merge production manifests | Chains/SLSA evidence, missing-approval failure followed by success, signed approval, TPA SBOM link, and production GitOps rollout |
+| Securing Your Namespaces — 10 min | Attempt unsigned/unapproved deployment and verify the legitimate release | Admission-policy denials and a running approved application/database |
+
+[Module 2 outline](modules/module-02-secure-software-factory.md) and [guide introduction](../../content/modules/ROOT/pages/module-02/00-intro.adoc) provide the detailed sequence. The workshop demonstrates the guide's SLSA Level 3 provenance and policy-control scenario; these learning outcomes do not constitute an independent security certification or proof of complete automated acceptance.
 
 <!-- Each module 10-30 min. Total: lab 1-4 hours, demo 15-45 min. Modules should build on each other. -->
 
@@ -107,6 +140,15 @@ Automation must provision:
 - Zoo Code AI coding assistant configured to use the Qwen3 235b MaaS endpoint
 - Per-participant namespaces, RBAC, and Developer Hub user accounts
 - Parasol Insurance sample application deployed in a staging/production namespace visible to participants
+
+**Module 2 requirements:**
+- Separate secured source and manifests repositories, the secured Developer Hub component/template, and a Dev Spaces image with gitsign and RHDA configured.
+- Per-tenant `secured-build`, `preprod`, and `secured-prod` namespaces plus a self-service branch sandbox; regular Module 1 resources remain separate.
+- Shared RHACS, RHTAS/Fulcio/Rekor/TUF, TPA/RHDA backend, Quay, SonarQube, Chains, Conforma policies, and the Release Approval application, with workshop SSO/trust relationships preconfigured.
+- Provisioned MR, post-merge build, and tag-promotion pipelines; commit/MR reports expose signature and scan evidence.
+- Production admission opt-in and policies for image signatures, signed-commit provenance, and release approval. An unsigned or unapproved image must not become a valid release merely because an informational sandbox build completed.
+- A workflow that waits for the post-merge image before tagging, creates the production-manifests MR only after policy/approval validation, and uploads its SBOM to TPA.
+- No ZTWIM installation or separate Trusted Software Factory setup is part of the Module 2 learner procedure.
 
 ## Infrastructure Requirements
 
@@ -129,3 +171,7 @@ Automation must provision:
 <!-- Relevant for Zero-Touch labs with solve/validate buttons or labs with automated checks. -->
 
 This is a classic (Showroom) lab. Assessment is implicit: participants verify their own progress through visible UI outcomes — the new REST endpoint responding in the browser, the pipeline turning green, and the GitOps sync completing. No automated solve/validate buttons are required for this lab type.
+
+For **Module 2**, assessment includes positive and negative outcomes: inspect dependency/base-image findings, verify commit identity and sandbox reports, distinguish informational checks from enforced MR gates, observe promotion fail before approval and pass afterward, inspect the signed approval and SBOM link, merge the production GitOps MR, and test admission denials alongside the legitimate release. Informational Conforma vulnerability/SonarQube warnings are not treated as blocking violations.
+
+Module 2 content is authored, but content completion is separate from test coverage and release readiness. `development.e2e.status` in the project spec remains independent; this design does not mark browser SSO/RHDA interactions or all end-to-end paths as validated.
