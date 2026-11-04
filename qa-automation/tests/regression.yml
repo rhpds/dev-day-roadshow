@@ -1,0 +1,145 @@
+---
+# Offline tests. These invoke the SAME assertion helpers used by Module 2 E2E.
+- name: QA assertion regressions (no cluster or credentials required)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    _success:
+      metadata: {name: current-run, namespace: example-secured-build}
+      spec:
+        params: [{name: git-revision, value: current-sha}]
+      status:
+        conditions: [{type: Succeeded, status: 'True'}]
+    _failed:
+      metadata: {name: failed-run, namespace: example-secured-build}
+      spec:
+        params: [{name: git-revision, value: current-sha}]
+      status:
+        conditions: [{type: Succeeded, status: 'False'}]
+    _stale:
+      metadata: {name: stale-run, namespace: example-secured-build}
+      spec:
+        params: [{name: git-revision, value: old-sha}]
+      status:
+        conditions: [{type: Succeeded, status: 'True'}]
+  tasks:
+    - name: Test correlation and fail-closed pipeline outcomes
+      ansible.builtin.include_tasks: case.yml
+      loop:
+        - name: current-success
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs: {resources: ["{{ _success }}", "{{ _stale }}"]}
+        - name: current-failure
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs: {resources: ["{{ _failed }}"]}
+          must_fail: true
+        - name: expected-negative-pipeline
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs: {resources: ["{{ _failed }}"]}
+          expected_status: 'False'
+        - name: unrelated-old-success
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs: {resources: ["{{ _stale }}"]}
+          must_fail: true
+        - name: no-pipeline
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs: {resources: []}
+          must_fail: true
+        - name: ambiguous-pipelines
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs: {resources: ["{{ _success }}", "{{ _success }}"]}
+          must_fail: true
+        - name: missing-condition
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs:
+            resources:
+              - metadata: {name: incomplete, namespace: example-secured-build}
+                spec:
+                  params: [{name: git-revision, value: current-sha}]
+                status: {}
+          must_fail: true
+      loop_control:
+        loop_var: qa_case
+        label: "{{ qa_case.name }}"
+
+    - name: Test admission failures are policy-specific, not generic errors
+      ansible.builtin.include_tasks: case.yml
+      loop:
+        - name: approved-image-allowed
+          helper: ../tasks/module2-assert-admission.yml
+          admission: {rc: 0, stderr: ''}
+        - name: unsigned-image-denied
+          helper: ../tasks/module2-assert-admission.yml
+          admission:
+            rc: 1
+            stderr: 'failed policy: parasol-image-signature-required; failed policy: parasol-signed-commit-required; failed policy: parasol-release-approval-required'
+          required: [parasol-image-signature-required, parasol-signed-commit-required, parasol-release-approval-required]
+        - name: signed-unapproved-image-denied-for-approval-only
+          helper: ../tasks/module2-assert-admission.yml
+          admission: {rc: 1, stderr: 'failed policy: parasol-release-approval-required'}
+          required: [parasol-release-approval-required]
+          forbidden: [parasol-image-signature-required, parasol-signed-commit-required]
+        - name: generic-rbac-error-is-not-a-pass
+          helper: ../tasks/module2-assert-admission.yml
+          admission: {rc: 1, stderr: 'Error from server (Forbidden): pods is forbidden'}
+          required: [parasol-release-approval-required]
+          must_fail: true
+        - name: webhook-timeout-is-not-a-pass
+          helper: ../tasks/module2-assert-admission.yml
+          admission: {rc: 1, stderr: 'failed calling webhook: context deadline exceeded'}
+          required: [parasol-release-approval-required]
+          must_fail: true
+        - name: registry-error-wrapped-in-policy-denial-is-not-a-pass
+          helper: ../tasks/module2-assert-admission.yml
+          admission:
+            rc: 1
+            stderr: 'failed policy: parasol-release-approval-required: MANIFEST_UNKNOWN'
+          required: [parasol-release-approval-required]
+          must_fail: true
+        - name: unsigned-image-accepted-is-a-failure
+          helper: ../tasks/module2-assert-admission.yml
+          admission: {rc: 0, stderr: ''}
+          required: [parasol-image-signature-required]
+          must_fail: true
+        - name: missing-signature-is-not-approval-only
+          helper: ../tasks/module2-assert-admission.yml
+          admission:
+            rc: 1
+            stderr: 'failed policy: parasol-release-approval-required; failed policy: parasol-image-signature-required'
+          required: [parasol-release-approval-required]
+          forbidden: [parasol-image-signature-required]
+          must_fail: true
+        - name: approved-image-rejected-is-a-failure
+          helper: ../tasks/module2-assert-admission.yml
+          admission: {rc: 1, stderr: 'failed policy: parasol-release-approval-required'}
+          must_fail: true
+      loop_control:
+        loop_var: qa_case
+        label: "{{ qa_case.name }}"
+
+    - name: Supply an unsafe Backstage template as returned by the GitLab API
+      ansible.builtin.set_fact:
+        _m2_template_open: !unsafe '${{'
+        _m2_template_path: templates/example/
+        _m2_template_actions: []
+        _m2_template_values: {owner: test-user, branch: e2e-example}
+        _m2_template_file:
+          json:
+            content: !unsafe bmFtZTogJHt7IHZhbHVlcy5vd25lciB9fS0ke3sgdmFsdWVzLmJyYW5jaCB9fQ==
+        m2_template_file: {path: templates/example/helm/Chart.yaml}
+
+    - name: Render the actual sandbox template helper offline
+      ansible.builtin.include_tasks: ../tasks/module2-render-values.yml
+
+    - name: Verify Backstage variables were replaced without evaluating them as Ansible
+      ansible.builtin.assert:
+        that:
+          - _m2_template_actions[0].content == 'name: test-user-e2e-example'
+          - _m2_template_actions[0].file_path == 'helm/Chart.yaml'
+
+    - name: Progressing is an expected readiness state, not an automatic failure
+      ansible.builtin.assert:
+        that:
+          - "'Progressing' in ['Healthy', 'Progressing']"
+          - "'Degraded' not in ['Healthy', 'Progressing']"

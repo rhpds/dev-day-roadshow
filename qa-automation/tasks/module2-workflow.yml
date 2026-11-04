@@ -1,0 +1,676 @@
+---
+- name: Allocate unique names for this Module 2 run
+  ansible.builtin.set_fact:
+    _m2_id: "e2e-{{ lookup('ansible.builtin.password', '/dev/null', length=8, chars=['ascii_lowercase', 'digits']) }}"
+    _m2_build: "{{ _tenant_user }}-secured-build"
+    _m2_issuer: "https://sso.{{ _ingress_domain }}/realms/sso"
+    _m2_template_path: templates/secured-parasol-dev-environment/manifests/
+    _m2_template_open: !unsafe '${{'
+    _m2_template_actions: []
+    _m2_completed: []
+
+- name: Set run-specific namespace and image
+  ansible.builtin.set_fact:
+    _m2_sandbox: "{{ _tenant_user }}-secured-{{ _m2_id }}"
+    _m2_image: "quay.{{ _ingress_domain }}/{{ _tenant_user }}/parasol-insurance-secured"
+
+- name: Authenticate to GitLab as the student
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/oauth/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      username: "{{ _tenant_user }}"
+      password: "{{ _tenant_password }}"
+    status_code: 200
+  register: _m2_gitlab_oauth
+  no_log: true
+
+- name: Set student GitLab authorization
+  ansible.builtin.set_fact:
+    _m2_gitlab_headers:
+      Authorization: "Bearer {{ _m2_gitlab_oauth.json.access_token }}"
+  no_log: true
+
+- name: Read the secured source project
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _tenant_user }}%2Fparasol-insurance-secured"
+    headers: "{{ _m2_gitlab_headers }}"
+    status_code: 200
+  register: _m2_source
+  no_log: true
+
+- name: Require enforced MR gates and an enabled production admission label
+  block:
+    - name: Read secured production namespace
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Namespace
+        name: "{{ _tenant_user }}-secured-prod"
+      register: _m2_prod_namespace
+
+    - name: Verify security gates are provisioned
+      ansible.builtin.assert:
+        that:
+          - _m2_source.json.only_allow_merge_if_pipeline_succeeds | bool
+          - _m2_prod_namespace.resources | length == 1
+          - _m2_prod_namespace.resources[0].metadata.labels['policy.rhtas.com/include'] | default('') == 'true'
+
+- name: Create the student's secured feature branch
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_source.json.id }}/repository/branches"
+    method: POST
+    headers: "{{ _m2_gitlab_headers }}"
+    body_format: json
+    body: {branch: "{{ _m2_id }}", ref: main}
+    status_code: 201
+  no_log: true
+
+# Backend equivalent of Developer Hub Self-Service: render the SAME imported
+# template, publish its chart and let ArgoCD provision the sandbox and webhook.
+- name: List the imported secured sandbox template files
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/parasol%2Frhdh-templates/repository/tree?ref=main&recursive=true&per_page=100&path={{ _m2_template_path | urlencode }}"
+    headers: "{{ _m2_gitlab_headers }}"
+    status_code: 200
+  register: _m2_template_tree
+  no_log: true
+
+- name: Reject missing or truncated template listings
+  ansible.builtin.assert:
+    that:
+      - _m2_template_tree.json | length > 0
+      - _m2_template_tree.json | length < 100
+    fail_msg: Sandbox template missing or exceeds this runner's listing limit; do not silently omit files.
+
+- name: Set secured sandbox parameters
+  ansible.builtin.set_fact:
+    _m2_template_values:
+      namespace: "{{ _m2_sandbox }}"
+      branch: "{{ _m2_id }}"
+      source_repo: "{{ _gitlab_url }}/{{ _tenant_user }}/parasol-insurance-secured.git"
+      owner: "{{ _tenant_user }}"
+      image_host: "quay.{{ _ingress_domain }}"
+      image_organization: parasol
+      image_name: "parasol-insurance-secured-{{ _tenant_user }}"
+      image_tag: latest
+      gitlab_host: "{{ _gitlab_host }}"
+      cluster_subdomain: "{{ _ingress_domain }}"
+      gitops_namespace: openshift-gitops
+      dev_email: "{{ _tenant_user }}@demo.redhat.com"
+
+- name: Render secured sandbox template files
+  ansible.builtin.include_tasks: module2-render-file.yml
+  loop: "{{ _m2_template_tree.json | selectattr('type', 'equalto', 'blob') | list }}"
+  loop_control:
+    loop_var: m2_template_file
+    label: "{{ m2_template_file.path }}"
+
+- name: Get the student GitLab namespace
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/namespaces?search={{ _tenant_user }}&per_page=100"
+    headers: "{{ _m2_gitlab_headers }}"
+    status_code: 200
+  register: _m2_gitlab_namespaces
+  no_log: true
+
+- name: Require exactly the student's personal namespace
+  ansible.builtin.assert:
+    that:
+      - _m2_gitlab_namespaces.json | selectattr('full_path', 'equalto', _tenant_user) | list | length == 1
+
+- name: Publish a run-owned sandbox GitOps repository
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects"
+    method: POST
+    headers: "{{ _m2_gitlab_headers }}"
+    body_format: json
+    body:
+      name: "parasol-insurance-secured-{{ _m2_id }}-gitops"
+      namespace_id: "{{ (_m2_gitlab_namespaces.json | selectattr('full_path', 'equalto', _tenant_user) | first).id }}"
+      visibility: public
+    status_code: 201
+  register: _m2_sandbox_project
+  no_log: true
+
+- name: Commit the rendered secured sandbox chart
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_sandbox_project.json.id }}/repository/commits"
+    method: POST
+    headers: "{{ _m2_gitlab_headers }}"
+    body_format: json
+    body:
+      branch: main
+      commit_message: "Initialize secured QA sandbox {{ _m2_id }}"
+      actions: "{{ _m2_template_actions }}"
+    status_code: 201
+  no_log: true
+
+- name: Create the run-owned sandbox ArgoCD application
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      metadata:
+        name: "{{ _m2_id }}"
+        namespace: openshift-gitops
+        finalizers: [resources-finalizer.argocd.argoproj.io]
+      spec:
+        project: "appproject-{{ _tenant_user }}"
+        destination:
+          namespace: "{{ _m2_sandbox }}"
+          server: https://kubernetes.default.svc
+        source:
+          repoURL: "{{ _m2_sandbox_project.json.http_url_to_repo }}"
+          path: helm
+          targetRevision: main
+        syncPolicy:
+          automated: {prune: true, selfHeal: true}
+          syncOptions: [CreateNamespace=true, RespectIgnoreDifferences=true]
+
+- name: Wait for the secured sandbox pipeline
+  kubernetes.core.k8s_info:
+    api_version: tekton.dev/v1
+    kind: Pipeline
+    namespace: "{{ _m2_sandbox }}"
+    name: parasol-insurance-secured-push
+  register: _m2_sandbox_pipeline
+  until: _m2_sandbox_pipeline.resources | length == 1
+  retries: 60
+  delay: 10
+
+- name: Wait for webhook setup and the initial sandbox trigger
+  kubernetes.core.k8s_info:
+    api_version: batch/v1
+    kind: Job
+    namespace: "{{ _m2_sandbox }}"
+    name: trigger-first-build
+  register: _m2_initial_trigger
+  until:
+    - _m2_initial_trigger.resources | length == 1
+    - _m2_initial_trigger.resources[0].status.succeeded | default(0) > 0
+  retries: 90
+  delay: 10
+
+- name: Create run-owned signing tooling using the provisioned Dev Spaces image
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Pod
+      metadata: {name: "{{ _m2_id }}", namespace: "{{ _m2_build }}"}
+      spec:
+        restartPolicy: Never
+        automountServiceAccountToken: false
+        containers:
+          - name: tools
+            image: image-registry.openshift-image-registry.svc:5000/workspace-images/parasol-insurance-secured:latest
+            command: [sleep, '14400']
+            resources:
+              requests: {cpu: 100m, memory: 256Mi}
+              limits: {memory: 1Gi}
+            volumeMounts:
+              - {name: identity, mountPath: /var/run/sigstore/cosign}
+        volumes:
+          - {name: identity, emptyDir: {medium: Memory}}
+
+- name: Wait for signing tools
+  ansible.builtin.command:
+    argv: [oc, wait, "pod/{{ _m2_id }}", -n, "{{ _m2_build }}", --for=condition=Ready, --timeout=180s]
+  changed_when: false
+
+- name: Read the student source files
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_source.json.id }}/repository/files/{{ item }}?ref={{ _m2_id }}"
+    headers: "{{ _m2_gitlab_headers }}"
+    status_code: 200
+  loop: [pom.xml, Containerfile]
+  register: _m2_source_files
+  no_log: true
+
+- name: Decode and validate the expected source layout
+  ansible.builtin.set_fact:
+    _m2_pom: "{{ _m2_source_files.results[0].json.content | b64decode }}"
+    _m2_containerfile: "{{ _m2_source_files.results[1].json.content | b64decode }}"
+
+- name: Require exactly one framework version and base image
+  ansible.builtin.assert:
+    that:
+      - _m2_pom | regex_findall('<quarkus.platform.version>[^<]+</quarkus.platform.version>') | length == 1
+      - _m2_containerfile | regex_findall('(?m)^FROM .+') | length == 1
+      - module2_quarkus_version | default('3.40.1') is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+
+- name: Apply the framework and hardened-base-image fixes from the exercises
+  ansible.builtin.set_fact:
+    _m2_files:
+      - path: pom.xml
+        content: "{{ _m2_pom | regex_replace('<quarkus.platform.version>[^<]+</quarkus.platform.version>', '<quarkus.platform.version>' ~ (module2_quarkus_version | default('3.40.1')) ~ '</quarkus.platform.version>') }}"
+      - path: Containerfile
+        content: "{{ _m2_containerfile | regex_replace('(?m)^FROM .+', 'FROM registry.access.redhat.com/hi/openjdk:21-runtime') }}"
+      - path: qa-e2e.txt
+        content: "{{ _m2_id }} signed security remediation\n"
+
+- name: Sign and push the remediated source
+  ansible.builtin.include_tasks: module2-sign.yml
+  vars:
+    _m2_commit_message: "Remediate dependencies and base image {{ _m2_id }}"
+
+- name: Verify the signed sandbox build
+  ansible.builtin.include_tasks: module2-wait-pipeline.yml
+  vars:
+    _m2_pipeline_namespace: "{{ _m2_sandbox }}"
+    _m2_pipeline: parasol-insurance-secured-push
+    _m2_run_param: {name: commit-sha, value: "{{ _m2_sha }}"}
+    _m2_expected_status: 'True'
+
+- name: Read sandbox signature verification
+  ansible.builtin.include_tasks: module2-task.yml
+  vars: {_m2_task_name: verify-commit-signature}
+
+- name: Require a real verified student signature
+  ansible.builtin.assert:
+    that:
+      - _m2_task_results.SIGNATURE_STATUS == 'SIGNED'
+
+- name: Require the sandbox GitLab security report
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_source.json.id }}/repository/commits/{{ _m2_sha }}/comments"
+    headers: "{{ _m2_gitlab_headers }}"
+    status_code: 200
+  register: _m2_comments
+  until: _m2_comments.json | selectattr('note', 'search', 'Sandbox Build Results') | list | length > 0
+  retries: 12
+  delay: 5
+  no_log: true
+
+- name: Create an unsigned API commit as the optional negative exercise
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_source.json.id }}/repository/commits"
+    method: POST
+    headers: "{{ _m2_gitlab_headers }}"
+    body_format: json
+    body:
+      branch: "{{ _m2_id }}"
+      commit_message: "Unsigned negative test {{ _m2_id }}"
+      actions:
+        - {action: update, file_path: qa-e2e.txt, content: "{{ _m2_id }} unsigned\n"}
+    status_code: 201
+  register: _m2_unsigned
+  no_log: true
+
+- name: Require unsigned commits to remain informational in the sandbox
+  ansible.builtin.include_tasks: module2-wait-pipeline.yml
+  vars:
+    _m2_pipeline_namespace: "{{ _m2_sandbox }}"
+    _m2_pipeline: parasol-insurance-secured-push
+    _m2_run_param: {name: commit-sha, value: "{{ _m2_unsigned.json.id }}"}
+    _m2_expected_status: 'True'
+
+- name: Read unsigned sandbox signature result
+  ansible.builtin.include_tasks: module2-task.yml
+  vars: {_m2_task_name: verify-commit-signature}
+
+- name: Require the sandbox to explicitly report UNSIGNED
+  ansible.builtin.assert:
+    that:
+      - _m2_task_results.SIGNATURE_STATUS == 'UNSIGNED'
+
+- name: Open an MR for the unsigned commit
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_source.json.id }}/merge_requests"
+    method: POST
+    headers: "{{ _m2_gitlab_headers }}"
+    body_format: json
+    body: {source_branch: "{{ _m2_id }}", target_branch: main, title: "Module 2 unsigned QA {{ _m2_id }}"}
+    status_code: 201
+  register: _m2_bad_mr
+  no_log: true
+
+- name: Require enforced MR checks to reject the unsigned commit
+  ansible.builtin.include_tasks: module2-wait-pipeline.yml
+  vars:
+    _m2_pipeline_namespace: "{{ _m2_build }}"
+    _m2_pipeline: parasol-insurance-mr-check
+    _m2_run_param: {name: commit-sha, value: "{{ _m2_unsigned.json.id }}"}
+    _m2_expected_status: 'False'
+
+- name: Read enforced signature task
+  ansible.builtin.include_tasks: module2-task.yml
+  vars: {_m2_task_name: verify-commit-signature}
+
+- name: Require failure specifically at the signature gate
+  ansible.builtin.assert:
+    that:
+      - _m2_task.status.conditions[0].status == 'False'
+
+- name: Verify GitLab refuses the failed MR merge
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_source.json.id }}/merge_requests/{{ _m2_bad_mr.json.iid }}/merge"
+    method: PUT
+    headers: "{{ _m2_gitlab_headers }}"
+    body_format: json
+    body: {sha: "{{ _m2_unsigned.json.id }}"}
+    status_code: [405, 406]
+  no_log: true
+
+- name: Close the negative-test MR
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_source.json.id }}/merge_requests/{{ _m2_bad_mr.json.iid }}"
+    method: PUT
+    headers: "{{ _m2_gitlab_headers }}"
+    body_format: json
+    body: {state_event: close}
+    status_code: 200
+  no_log: true
+
+- name: Make a final genuinely signed commit
+  ansible.builtin.include_tasks: module2-sign.yml
+  vars:
+    _m2_commit_message: "Signed security fixes {{ _m2_id }}"
+
+- name: Open the signed MR
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_source.json.id }}/merge_requests"
+    method: POST
+    headers: "{{ _m2_gitlab_headers }}"
+    body_format: json
+    body: {source_branch: "{{ _m2_id }}", target_branch: main, title: "Module 2 signed QA {{ _m2_id }}"}
+    status_code: 201
+  register: _m2_good_mr
+  no_log: true
+
+- name: Require signed MR checks to succeed
+  ansible.builtin.include_tasks: module2-wait-pipeline.yml
+  vars:
+    _m2_pipeline_namespace: "{{ _m2_build }}"
+    _m2_pipeline: parasol-insurance-mr-check
+    _m2_run_param: {name: commit-sha, value: "{{ _m2_sha }}"}
+    _m2_expected_status: 'True'
+
+- name: Wait for Chains to sign the MR image
+  kubernetes.core.k8s_info:
+    api_version: tekton.dev/v1
+    kind: PipelineRun
+    namespace: "{{ _m2_build }}"
+    name: "{{ _m2_run.metadata.name }}"
+  register: _m2_chains
+  until: _m2_chains.resources[0].metadata.annotations['chains.tekton.dev/signed'] | default('') == 'true'
+  retries: 30
+  delay: 10
+
+- name: Reject an unsigned image at admission
+  ansible.builtin.include_tasks: module2-admission.yml
+  vars:
+    _m2_admission_image: docker.io/library/nginx:latest
+    _m2_required_policies: [parasol-image-signature-required, parasol-signed-commit-required, parasol-release-approval-required]
+    _m2_forbidden_policies: []
+
+- name: Reject a signed but unapproved MR image for approval only
+  ansible.builtin.include_tasks: module2-admission.yml
+  vars:
+    _m2_admission_image: "{{ _m2_image }}:mr-{{ _m2_good_mr.json.iid }}"
+    _m2_required_policies: [parasol-release-approval-required]
+    _m2_forbidden_policies: [parasol-image-signature-required, parasol-signed-commit-required]
+
+- name: Wait for GitLab to mark the signed MR mergeable
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_source.json.id }}/merge_requests/{{ _m2_good_mr.json.iid }}"
+    headers: "{{ _m2_gitlab_headers }}"
+    status_code: 200
+  register: _m2_mergeable
+  until: _m2_mergeable.json.detailed_merge_status == 'mergeable'
+  retries: 36
+  delay: 5
+  no_log: true
+
+- name: Merge the signed source MR
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_source.json.id }}/merge_requests/{{ _m2_good_mr.json.iid }}/merge"
+    method: PUT
+    headers: "{{ _m2_gitlab_headers }}"
+    body_format: json
+    body: {sha: "{{ _m2_sha }}"}
+    status_code: 200
+  register: _m2_merged
+  no_log: true
+
+- name: Require the source MR to be merged
+  ansible.builtin.assert:
+    that:
+      - _m2_merged.json.state == 'merged'
+
+- name: Store the exact merged source revision
+  ansible.builtin.set_fact:
+    _m2_merge_sha: "{{ _m2_merged.json.merge_commit_sha | default(_m2_sha, true) }}"
+
+- name: Require the post-merge secured build to succeed
+  ansible.builtin.include_tasks: module2-wait-pipeline.yml
+  vars:
+    _m2_pipeline_namespace: "{{ _m2_build }}"
+    _m2_pipeline: parasol-insurance-secured-push
+    _m2_run_param: {name: git-revision, value: "{{ _m2_merge_sha }}"}
+    _m2_expected_status: 'True'
+
+- name: Read immutable image and provenance gate results
+  ansible.builtin.set_fact:
+    _m2_build_results: "{{ _m2_run.status.results | default([]) | items2dict(key_name='name', value_name='value') }}"
+
+- name: Require signed source, ACS success, and a valid immutable image digest
+  ansible.builtin.assert:
+    that:
+      - _m2_build_results.COMMIT_SIGNATURE_STATUS == 'SIGNED'
+      - _m2_build_results.ACS_IMAGE_CHECK_STATUS == 'PASSED'
+      - (_m2_build_results.SONAR_QUALITY_RESULT | from_json).qualityGateStatus == 'OK'
+      - _m2_build_results.IMAGE_DIGEST is match('^sha256:[0-9a-f]{64}$')
+
+- name: Wait for Chains to attach post-merge provenance
+  kubernetes.core.k8s_info:
+    api_version: tekton.dev/v1
+    kind: PipelineRun
+    namespace: "{{ _m2_build }}"
+    name: "{{ _m2_run.metadata.name }}"
+  register: _m2_chains
+  until: _m2_chains.resources[0].metadata.annotations['chains.tekton.dev/signed'] | default('') == 'true'
+  retries: 30
+  delay: 10
+
+- name: Create the first release tag without approval
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_source.json.id }}/repository/tags"
+    method: POST
+    headers: "{{ _m2_gitlab_headers }}"
+    body_format: json
+    body: {tag_name: "{{ _m2_id }}-unapproved", ref: "{{ _m2_merge_sha }}"}
+    status_code: 201
+  no_log: true
+
+- name: Require promotion to fail before release approval
+  ansible.builtin.include_tasks: module2-wait-pipeline.yml
+  vars:
+    _m2_pipeline_namespace: "{{ _m2_build }}"
+    _m2_pipeline: parasol-insurance-secured-tag-promote
+    _m2_run_param: {name: git-tag, value: "{{ _m2_id }}-unapproved"}
+    _m2_expected_status: 'False'
+
+- name: Read the Conforma gate
+  ansible.builtin.include_tasks: module2-task.yml
+  vars: {_m2_task_name: ec-validate}
+
+- name: Require Conforma, rather than an unrelated task, to reject promotion
+  ansible.builtin.assert:
+    that:
+      - _m2_task.status.conditions[0].status == 'False'
+
+- name: Read the Conforma failure explanation
+  ansible.builtin.command:
+    argv: [oc, logs, "{{ _m2_task.status.podName }}", -n, "{{ _m2_build }}", -c, step-report]
+  register: _m2_ec_log
+  changed_when: false
+
+- name: Decode Conforma's structured failure report
+  ansible.builtin.set_fact:
+    _m2_ec_report: "{{ _m2_ec_log.stdout | from_json }}"
+
+- name: Require missing approval to be the only Conforma violation
+  ansible.builtin.assert:
+    that:
+      - not (_m2_ec_report.success | bool)
+      - _m2_ec_report.components | map(attribute='violations', default=[]) | flatten | length > 0
+      - >-
+        _m2_ec_report.components | map(attribute='violations', default=[]) | flatten
+        | rejectattr('code', 'equalto', 'release_approval.approval_present') | list | length == 0
+    fail_msg: Promotion must fail specifically for missing approval, not missing provenance or another security gate.
+
+- name: Refresh the student's release-approval identity
+  ansible.builtin.uri:
+    url: "{{ _m2_issuer }}/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      client_id: trusted-artifact-signer
+      scope: openid email profile
+      username: "{{ _tenant_user }}"
+      password: "{{ _tenant_password }}"
+    status_code: 200
+  register: _m2_approval_identity
+  no_log: true
+
+- name: Submit a real signed release approval through the student application
+  ansible.builtin.uri:
+    url: "https://parasol-approval.{{ _ingress_domain }}/api/attest"
+    method: POST
+    headers: {Authorization: "Bearer {{ _m2_approval_identity.json.access_token }}"}
+    body_format: form-multipart
+    body:
+      imageRef: "{{ _m2_image }}"
+      digest: "{{ _m2_build_results.IMAGE_DIGEST }}"
+      approved: 'true'
+      reason: "RHDPCD-864 disposable-tenant E2E: signed source and ACS checks passed."
+      idToken: "{{ _m2_approval_identity.json.id_token }}"
+    status_code: 200
+  register: _m2_approval
+  no_log: true
+
+- name: Require approval signing to succeed
+  ansible.builtin.assert:
+    that:
+      - _m2_approval.json.success | bool
+
+- name: Create the approved release tag
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m2_source.json.id }}/repository/tags"
+    method: POST
+    headers: "{{ _m2_gitlab_headers }}"
+    body_format: json
+    body: {tag_name: "{{ _m2_id }}-approved", ref: "{{ _m2_merge_sha }}"}
+    status_code: 201
+  no_log: true
+
+- name: Require approved Conforma promotion to succeed
+  ansible.builtin.include_tasks: module2-wait-pipeline.yml
+  vars:
+    _m2_pipeline_namespace: "{{ _m2_build }}"
+    _m2_pipeline: parasol-insurance-secured-tag-promote
+    _m2_run_param: {name: git-tag, value: "{{ _m2_id }}-approved"}
+    _m2_expected_status: 'True'
+
+- name: Read the SBOM upload result
+  ansible.builtin.include_tasks: module2-task.yml
+  vars: {_m2_task_name: generate-upload-sbom}
+
+- name: Require successful SBOM upload with a TPA record link
+  ansible.builtin.assert:
+    that:
+      - _m2_task.status.conditions[0].status == 'True'
+      - _m2_task_results.LINK_TO_SBOM | default('') is match('^https://[^/]+/sboms/.+')
+
+- name: Wait for the exact production manifests MR
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _tenant_user }}%2Fparasol-insurance-secured-manifests/merge_requests?state=opened&target_branch=main&source_branch=promote-{{ _m2_id }}-approved"
+    headers: "{{ _m2_gitlab_headers }}"
+    status_code: 200
+  register: _m2_prod_mrs
+  until: _m2_prod_mrs.json | length == 1
+  retries: 18
+  delay: 10
+  no_log: true
+
+- name: Merge the production GitOps promotion MR
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _tenant_user }}%2Fparasol-insurance-secured-manifests/merge_requests/{{ _m2_prod_mrs.json[0].iid }}/merge"
+    method: PUT
+    headers: "{{ _m2_gitlab_headers }}"
+    status_code: 200
+  register: _m2_prod_merged
+  no_log: true
+
+- name: Require production promotion to have merged
+  ansible.builtin.assert:
+    that:
+      - _m2_prod_merged.json.state == 'merged'
+
+- name: Wait for production to roll out the tested image digest
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ _tenant_user }}-secured-prod"
+    name: parasol-insurance
+  register: _m2_production
+  until:
+    - _m2_production.resources | length == 1
+    - _m2_production.resources[0].spec.template.spec.containers | selectattr('image', 'search', '@' ~ _m2_build_results.IMAGE_DIGEST ~ '$') | list | length > 0
+    - _m2_production.resources[0].status.observedGeneration | default(0) >= _m2_production.resources[0].metadata.generation
+    - _m2_production.resources[0].status.updatedReplicas | default(0) == _m2_production.resources[0].spec.replicas
+    - _m2_production.resources[0].status.availableReplicas | default(0) >= _m2_production.resources[0].spec.replicas
+  retries: 60
+  delay: 10
+
+- name: Require the approved immutable image to pass admission
+  ansible.builtin.include_tasks: module2-admission.yml
+  vars:
+    _m2_admission_image: "{{ _m2_image }}@{{ _m2_build_results.IMAGE_DIGEST }}"
+    _m2_required_policies: []
+    _m2_forbidden_policies: []
+
+- name: Read the production application route
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    namespace: "{{ _tenant_user }}-secured-prod"
+    name: parasol-insurance
+  register: _m2_prod_route
+
+- name: Require the production route to exist
+  ansible.builtin.assert:
+    that:
+      - _m2_prod_route.resources | length == 1
+
+- name: Verify production serves seeded claims
+  ansible.builtin.uri:
+    url: "https://{{ _m2_prod_route.resources[0].spec.host }}/api/claims"
+    status_code: 200
+    return_content: true
+  register: _m2_claims
+  until: _m2_claims.status | default(0) == 200
+  retries: 12
+  delay: 5
+
+- name: Require actual claims, not just a successful HTTP status
+  ansible.builtin.assert:
+    that:
+      - _m2_claims.json is sequence
+      - _m2_claims.json is not string
+      - _m2_claims.json is not mapping
+      - _m2_claims.json | length > 0
+
+- name: Module 2 E2E passed
+  ansible.builtin.debug:
+    msg: >-
+      PASS {{ _m2_id }}: secured sandbox, signed remediation, informational unsigned sandbox,
+      enforced unsigned MR rejection, signed MR and Chains provenance, ACS gates,
+      unapproved promotion rejection, signed release approval, SBOM upload,
+      GitOps production promotion, policy-specific admission tests and seeded claims API.
+      Browser-only RHDA reports and RHDH navigation remain manual (see README).

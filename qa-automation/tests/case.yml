@@ -1,0 +1,26 @@
+---
+- name: Reset assertion outcome
+  ansible.builtin.set_fact:
+    _qa_assertion_failed: false
+
+- name: Exercise the production assertion tasks
+  block:
+    - name: Run the selected assertion helper
+      ansible.builtin.include_tasks: "{{ qa_case.helper }}"
+      vars:
+        _m2_runs: "{{ qa_case.runs | default({}) }}"
+        _m2_run_param: {name: git-revision, value: current-sha}
+        _m2_expected_status: "{{ qa_case.expected_status | default('True') }}"
+        _m2_admission: "{{ qa_case.admission | default({}) }}"
+        _m2_required_policies: "{{ qa_case.required | default([]) }}"
+        _m2_forbidden_policies: "{{ qa_case.forbidden | default([]) }}"
+  rescue:
+    - name: Record expected assertion failures
+      ansible.builtin.set_fact:
+        _qa_assertion_failed: true
+
+- name: "Check regression case {{ qa_case.name }}"
+  ansible.builtin.assert:
+    that:
+      - _qa_assertion_failed == (qa_case.must_fail | default(false))
+    fail_msg: "Unexpected assertion outcome: {{ qa_case.name }}"
