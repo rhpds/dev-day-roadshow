@@ -11,11 +11,9 @@ A hands-on session covering interactive troubleshooting, live metric visualizati
 - **Prerequisites for this module:** Lab environment access with pre-deployed R&D applications (Parasol Web and Parasol Payments)
 - **Estimated duration:** 35 minutes (3 exercises)
 
-### Learning Objective
+### Learning Objectives
 
-Use OpenShift 5's AI-powered agentic Lightspeed to interactively diagnose, monitor, and autonomously remediate application issues in the Parasol Insurance app.
-
-### Detailed Objectives
+Use OpenShift 5's AI-powered agentic Lightspeed to interactively diagnose, monitor, and remediate application issues in the Parasol Insurance app:
 
 - Use OpenShift Lightspeed to investigate application issues through natural language
 - Diagnose network connectivity problems using AI-driven cluster introspection
@@ -53,6 +51,14 @@ Use OpenShift 5's AI-powered agentic Lightspeed to interactively diagnose, monit
 - OpenShift Lightspeed with MCP enabled on the cluster
 - Perses operator installed for dashboard creation
 - PrometheusRule for PaymentErrorRateHigh alert pre-configured
+
+### Model Usage
+
+- **Deployment default:** `claude-sonnet-4-6-a70b`, selected by the OpenShift Lightspeed chart's `llm.model` value. The rendered `OLSConfig.spec.ols.defaultModel` is authoritative if the deployment overrides it.
+- **Tool path:** Lightspeed queries the live cluster through MCP; diagnosis and requested remediation involve multiple model/tool turns rather than a single text completion.
+- **E2E model:** The explicit LiteLLM check reads the model from `OLSConfig`, unless `e2e_module4_litellm_model` is supplied. It checks that model through the tenant-key/read-only MCP fixture; the Lightspeed service's own credential and full UI/tool workflow are separate paths.
+- `qwen38-27b` remains in the allowed-model list and older E2E fallback expressions; it is not the checked deployment's selected default.
+- See the [design model inventory](../design.md#model-usage-and-maas-boundaries) for source references and token-accounting scope.
 
 ### Content Status
 

@@ -79,7 +79,7 @@ Lab (hands-on)
 **Upstream / Third-party (on-cluster):**
 - GitLab — source control and merge request management
 - SonarQube — static code analysis and quality gate
-- Zoo Code AI coding assistant — AI-assisted code remediation (backed by Qwen3 235b via MaaS)
+- Zoo Code AI coding assistant — AI-assisted code remediation through MaaS; checked Dev Spaces default is `claude-sonnet-4-6-a70b`
 - Quarkus — Java microservices framework
 - Apache Kafka — event streaming (background infrastructure)
 - Apache Camel — integration framework (Module 3)
@@ -96,6 +96,32 @@ Lab (hands-on)
 - Java, JSON, YAML, AsciiDoc
 
 <!-- Use official names: "Red Hat OpenShift", not "OpenShift". List upstream projects separately. -->
+
+## Model Usage and MaaS Boundaries
+
+The spec's primary model is `claude-sonnet-4-6-a70b`, and its tier is **frontier**, because the checked IDE/DLS and OpenShift Lightspeed deployment defaults select Sonnet. This is a multi-model workshop, not a Qwen-only/open-source-only deployment. These are source defaults; rendered workspace/provider settings and `OLSConfig` are authoritative when overridden.
+
+| Consumer | Checked model selection | Important distinction |
+|---|---|---|
+| Module 1 — Zoo Code and preconfigured Dev Spaces assistants | `claude-sonnet-4-6-a70b` through `aiAssistantModel` | Current Module 1 E2E coding/tool probes default to `qwen3-235b`; those do not prove the IDE's Sonnet path by themselves |
+| Module 1 — Developer Hub Lightspeed/Llama Stack | `claude-sonnet-4-6-a70b` for validation and safety | User-chat model selection follows the configured provider/UI; validation/safety settings are not proof of a fixed chat-model selection |
+| Module 2 — secured supply-chain exercises | No required inference alias | Signing, RHDA analysis, provenance, Conforma, approval and admission are not LLM calls; optional shared IDE assistance follows Dev Spaces configuration |
+| Module 3 — Camel agent, amendment and customer-profile tools | `qwen3-14b` | Gold and Silver use the same model with different identities/budgets/fallback, not different model sizes |
+| Module 4 — OpenShift Lightspeed | `claude-sonnet-4-6-a70b` through `llm.model`; live `OLSConfig.spec.ols.defaultModel` wins | Its E2E compatibility check reads the configured model but uses the tenant-key route; the service's credential/UI path remains separate |
+| Module 5 — Developer Lightspeed for MTA | `claude-sonnet-4-6-a70b` in generated `provider-settings.yaml` through `aiAssistantModel` | The guide's manual-recovery example and current MTA E2E prompts default to `qwen3-235b`, an alternative rather than the prefilled deployment default |
+
+The LB2111 key allowlist also includes `qwen38-27b` and `claude-opus-5-5-a96b`. Availability on a key does not mean a module actively selects them. `qwen38-27b` also appears in older Lightspeed E2E fallback expressions; it is not the checked configured default. Neither alias should be described as mandatory for the current module defaults solely because it is allowed.
+
+**Tool calling and TPM:** Test the actual selected model/key/application path. Compatibility requires structured tool selection, real tool execution, returning the tool result, and a grounded final answer—not just HTTP 200 or plausible text. Count prompt/completion usage across **all** inference rounds, including tool schemas, history and tool results. Per-user tests use per-user keys where applicable; service/global credentials are a distinct path. Concurrent per-user runs create aggregate load, but compatibility probes alone do not certify configured TPM capacity or quota enforcement.
+
+**Known documentation/E2E alternatives:** The default E2E overrides are `e2e_module1_litellm_model=qwen3-235b`, `e2e_module3_litellm_model=qwen3-14b`, Module 4's `OLSConfig` model, and `e2e_module5_litellm_model=qwen3-235b`. Set the applicable override to the active client model when testing deployment-model parity. This PH update records the distinction; it does not change routing, model entitlements, application configuration, or E2E defaults.
+
+**Source references:**
+- [Dev Spaces model default](../../automation/gitops/cluster/devspaces/devspaces-instance/values.yaml), [Zoo Code profile](../../automation/gitops/cluster/devspaces/devspaces-instance/templates/zoo-code-config.yaml), and [generated DLS provider settings](../../automation/gitops/cluster/devspaces/devspaces-instance/templates/es-dls-mta-config.yaml).
+- [Developer Hub validation model](../../automation/gitops/cluster/developer-hub/templates/backstage-cr.yaml) and [safety-provider settings](../../automation/gitops/cluster/developer-hub/templates/es-lightspeed-llama-stack-secrets.yaml).
+- [OpenShift Lightspeed model default](../../automation/gitops/cluster/openshift-lightspeed/values.yaml) and [OLSConfig rendering](../../automation/gitops/cluster/openshift-lightspeed/templates/olsconfig.yaml).
+- [Camel Gold/Silver guide settings](../../content/modules/ROOT/pages/module-03/m5/m5.3.adoc) and the [workspace agent configuration](https://github.com/openshift-dev-days/module3-dev-workspace/blob/main/tools/solution/steps/8/agent/application.properties).
+- [MTA guide recovery example](../../content/modules/ROOT/pages/module-05/module-05-03-configure-mta-extension.adoc), [Module 1 E2E](../../qa-automation/tasks/module1-workflow.yml), and [Module 5 E2E](../../qa-automation/e2e-module-05.yml).
 
 ## Module Map
 
@@ -136,8 +162,8 @@ Intermediate
 
 Automation must provision:
 - A shared OpenShift cluster with all required operators installed (Dev Spaces, Pipelines, GitOps, Developer Hub)
-- On-cluster services: GitLab instance (with Parasol Insurance repositories pre-loaded), Developer Hub with RHDH Lightspeed configured against the Qwen3 235b MaaS endpoint, SonarQube with the Parasol project and quality profile configured, Argo CD with GitOps manifests for the Parasol application
-- Zoo Code AI coding assistant configured to use the Qwen3 235b MaaS endpoint
+- On-cluster services: GitLab instance (with Parasol Insurance repositories pre-loaded), Developer Hub with a MaaS-backed Lightspeed/Llama Stack provider and Sonnet validation/safety defaults, SonarQube with the Parasol project and quality profile configured, Argo CD with GitOps manifests for the Parasol application
+- Zoo Code AI coding assistant configured through Dev Spaces `aiAssistantModel` (checked default `claude-sonnet-4-6-a70b`)
 - Per-participant namespaces, RBAC, and Developer Hub user accounts
 - Parasol Insurance sample application deployed in a staging/production namespace visible to participants
 
@@ -159,7 +185,7 @@ Automation must provision:
 - **Control plane:** 3 nodes — 16 vCPU, 64GB RAM each
 - **Workers:** 4 nodes — 32 vCPU, 64GB RAM, 100GB disk each
 - **Automation approach:** Both — Ansible (cluster bootstrap and operator installation) and GitOps/Helm (per-tenant namespaces and application manifests)
-- **AI/MaaS:** MaaS, open-source tier, Qwen3 235b — RHDP-hosted on a separate cluster external to the workshop environment; backs Zoo Code AI coding assistant and RHDH Lightspeed
+- **AI/MaaS:** External MaaS with frontier Sonnet defaults for the checked IDE/DLS and OpenShift Lightspeed clients, `qwen3-14b` for Camel agents, and `qwen3-235b` in guide/E2E alternatives. The complete selection/credential boundaries are in the model inventory above. No local GPU deployment is required; actual model authorization and aggregate agent-round TPM must be validated for the event.
 - **External services:** `registry.redhat.io`, `quay.io`, `github.com` (GitOps configs and Showroom content), `open-vsx.org` (VS Code extensions provisioned into Dev Spaces), `repo1.maven.org` (Java dependencies), RHDP MaaS endpoint (URL confirmed at provisioning)
 - **Non-GA products:** None (all products are GA)
 

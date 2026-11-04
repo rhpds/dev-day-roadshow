@@ -55,11 +55,18 @@ Participants follow a complete developer journey on OpenShift 5 at Parasol Insur
 
 ### Infrastructure Notes
 
-- Developer Hub pre-configured with Parasol Insurance catalog entities and Lightspeed plugin (Qwen3 235b via MaaS)
+- Developer Hub pre-configured with Parasol Insurance catalog entities and a MaaS-backed Lightspeed/Llama Stack provider; checked validation/safety model is `claude-sonnet-4-6-a70b` and chat selection follows the configured provider/UI
 - Golden path template provisions Dev Spaces workspace + GitLab project per participant
 - OpenShift Pipeline (Tekton) with GitLab webhook, SonarQube with custom quality profile
-- Zoo Code plugin in Dev Spaces devfile, connected to Qwen3 235b via MaaS
+- Zoo Code plugin in Dev Spaces devfile, using the Dev Spaces `aiAssistantModel` default `claude-sonnet-4-6-a70b` via MaaS
 - Argo CD configured with GitOps manifests repository and per-participant production application
+
+### Model Usage
+
+- **IDE deployment default:** `claude-sonnet-4-6-a70b` for Zoo Code (and the other preconfigured workspace assistants) through Dev Spaces `aiAssistantModel`.
+- **Developer Hub:** Sonnet is configured for the Llama Stack validation/safety roles. Do not infer a fixed user-chat model from the validation model; use the provider/UI's active selection.
+- **Current E2E default:** The coding prompt and LiteLLM tool-compatibility fixture use `qwen3-235b`, unless `e2e_module1_litellm_model` overrides it. That does not by itself validate the IDE's configured Sonnet route.
+- See the [design model inventory](../design.md#model-usage-and-maas-boundaries) for source references and credential/usage boundaries.
 
 ### Content Status
 
