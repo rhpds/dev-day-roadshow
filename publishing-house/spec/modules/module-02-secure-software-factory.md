@@ -73,6 +73,12 @@ Introduction and environment access precede the exercises. The published overall
 - **Admission:** Policy Controller and the image-signature, signed-commit, and release-approval policies; secured production opts into enforcement through its namespace label.
 - All of these controls are preconfigured for the learner. The content does not ask participants to install ZTWIM or a separate Trusted Software Factory stack.
 
+### Model Usage
+
+- The security exercises do not require a separate model alias or inference call: dependency analysis, signing, provenance, Conforma, approval, SBOM and admission checks are not themselves LLM completions.
+- If a learner uses the shared IDE assistant, it follows the Dev Spaces `aiAssistantModel` setting (checked default `claude-sonnet-4-6-a70b`); that is distinct from the required security workflow.
+- No artificial LiteLLM stage is added to Module 2 E2E. See the [design model inventory](../design.md#model-usage-and-maas-boundaries).
+
 ### Verification and Content Status
 
 **Content authored:** all seven Module 2 navigation-linked pages are present. Learner verification includes RHDA report changes, commit identity evidence, sandbox/MR results, the before/after approval outcome, the TPA SBOM link, GitOps rollout, and admission denials/acceptance.
