@@ -22,7 +22,11 @@ its existing user data and runtime-automation service account.
 The healthcheck checks the base tenant and Module 2 namespaces, applications,
 pipeline/task definitions, credential secrets, Maven cache PVC, application/route
 definitions, production admission opt-in, signing policies and shared security
-services. Missing routes are failures, not skipped HTTP tests.
+services. Missing routes are failures, not skipped HTTP tests. Module 2 prerequisite,
+application and shared-service checks explain each result as `PASS`, `EXPECTED`,
+`WARN` or `FAIL`, including why no failure needs recording. Secret lookup values
+remain censored; the following metadata-only report shows the resource name and
+reason without revealing credentials.
 
 **Readiness is not exercise completion.** ArgoCD `Progressing` remains allowed.
 `OutOfSync` is reported separately as a warning: shared Dev Spaces ownership can

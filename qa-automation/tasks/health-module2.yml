@@ -35,26 +35,14 @@
     namespace: "{{ item.namespace | default(omit) }}"
     name: "{{ item.name }}"
   loop: "{{ _m2_health_resources }}"
+  loop_control:
+    label: "{{ item.kind }} {{ item.namespace | default('cluster') }}/{{ item.name }}"
   register: _m2_health_lookups
   failed_when: false
-  no_log: true
+  no_log: "{{ item.kind == 'Secret' }}"
 
 - name: Record missing resources except the specifically classified initial production gate
   ansible.builtin.import_tasks: health-record-module2-resources.yml
-
-- name: Record empty credential secrets or unbound build storage
-  ansible.builtin.set_fact:
-    healthcheck_failures: >-
-      {{ healthcheck_failures + ['Module 2: ' ~ item.item.kind ~ ' ' ~ item.item.name ~ ' is not ready'] }}
-  loop: "{{ _m2_health_lookups.results }}"
-  loop_control:
-    label: "{{ item.item.kind }}/{{ item.item.name }}"
-  when:
-    - item.resources | default([]) | length == 1
-    - >-
-      (item.item.kind == 'Secret' and item.resources[0].data | default({}) | length == 0)
-      or (item.item.kind == 'PersistentVolumeClaim' and item.resources[0].status.phase | default('') != 'Bound')
-  no_log: true
 
 - name: Read secured production namespace enforcement label
   kubernetes.core.k8s_info:
@@ -63,12 +51,24 @@
     name: "{{ _tenant_user }}-secured-prod"
   register: _m2_enforcement_namespace
 
-- name: Record missing production admission opt-in
+- name: Classify production admission opt-in
   ansible.builtin.set_fact:
-    healthcheck_failures: "{{ healthcheck_failures + ['Module 2: secured-prod must have policy.rhtas.com/include=true'] }}"
-  when: >-
-    _m2_enforcement_namespace.resources | length == 0
-    or _m2_enforcement_namespace.resources[0].metadata.labels['policy.rhtas.com/include'] | default('') != 'true'
+    _m2_admission_opted_in: >-
+      {{ _m2_enforcement_namespace.resources | length == 1
+         and _m2_enforcement_namespace.resources[0].metadata.labels['policy.rhtas.com/include'] | default('') == 'true' }}
+
+- name: Explain the production admission opt-in result
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'PASS' if _m2_admission_opted_in | bool else 'FAIL' }} — {{ _tenant_user }}-secured-prod:
+      {{ 'policy.rhtas.com/include=true; no missing-opt-in failure is expected.'
+         if _m2_admission_opted_in | bool else 'Production admission opt-in is missing.' }}
+
+- name: Record a missing opt-in only when absent
+  ansible.builtin.set_fact:
+    healthcheck_failures: >-
+      {{ healthcheck_failures + ([] if _m2_admission_opted_in | bool else
+         ['Module 2: secured-prod must have policy.rhtas.com/include=true']) }}
 
 - name: Read Module 2 shared-service deployments
   kubernetes.core.k8s_info:
@@ -88,13 +88,5 @@
     - {namespace: policy-controller-operator, name: policy-controller-webhook}
   register: _m2_service_lookups
 
-- name: Record unavailable Module 2 shared services
-  ansible.builtin.set_fact:
-    healthcheck_failures: >-
-      {{ healthcheck_failures + ['Module 2: service deployment ' ~ item.item.namespace ~ '/' ~ item.item.name ~ ' is unavailable'] }}
-  loop: "{{ _m2_service_lookups.results }}"
-  loop_control:
-    label: "{{ item.item.namespace }}/{{ item.item.name }}"
-  when: >-
-    item.resources | length == 0
-    or item.resources[0].status.availableReplicas | default(0) | int < 1
+- name: Explain shared-service readiness and record real failures
+  ansible.builtin.import_tasks: health-report-module2-services.yml

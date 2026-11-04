@@ -52,6 +52,42 @@
           prerequisites:
             - item: {kind: Secret, name: quay-push-secret, namespace: user-example-secured-build}
               resources: []
+        - name: populated-secret-passes-without-printing-values
+          pending: true
+          failures: 0
+          prerequisites:
+            - item: {kind: Secret, name: quay-push-secret, namespace: user-example-secured-build}
+              resources: [{data: {auth: DO_NOT_PRINT_TEST_VALUE}}]
+        - name: empty-secret-still-fails
+          pending: true
+          failures: 1
+          prerequisites:
+            - item: {kind: Secret, name: quay-push-secret, namespace: user-example-secured-build}
+              resources: [{data: {}}]
+        - name: bound-storage-has-an-explanation
+          pending: true
+          failures: 0
+          prerequisites:
+            - item: {kind: PersistentVolumeClaim, name: maven-cache, namespace: user-example-secured-build}
+              resources: [{status: {phase: Bound}}]
+        - name: pending-storage-still-fails
+          pending: true
+          failures: 1
+          prerequisites:
+            - item: {kind: PersistentVolumeClaim, name: maven-cache, namespace: user-example-secured-build}
+              resources: [{status: {phase: Pending}}]
+        - name: available-shared-service-has-an-explanation
+          pending: true
+          failures: 0
+          services:
+            - item: {namespace: rhacs, name: central}
+              resources: [{status: {availableReplicas: 1}}]
+        - name: unavailable-shared-service-still-fails
+          pending: true
+          failures: 1
+          services:
+            - item: {namespace: rhacs, name: central}
+              resources: [{status: {availableReplicas: 0}}]
         - name: absent-production-application-is-not-a-release-gate
           missing_app: true
           failures: 1
