@@ -1,0 +1,13 @@
+---
+- name: Select the correlated PipelineRun
+  ansible.builtin.set_fact:
+    _m2_run: "{{ _m2_runs.resources | selectattr('spec.params', 'contains', _m2_run_param) | list | first }}"
+
+- name: Require the expected pipeline outcome
+  ansible.builtin.assert:
+    that:
+      - _m2_runs.resources | selectattr('spec.params', 'contains', _m2_run_param) | list | length == 1
+      - _m2_run.status.conditions[0].type == 'Succeeded'
+      - _m2_run.status.conditions[0].status in ['True', 'False']
+      - (_m2_run.status.conditions[0].status | bool) == (_m2_expected_status | bool)
+    fail_msg: "Unexpected result for {{ _m2_run.metadata.namespace }}/{{ _m2_run.metadata.name }}: {{ _m2_run.status.conditions }}"

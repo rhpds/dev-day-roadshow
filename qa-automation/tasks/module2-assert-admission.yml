@@ -1,0 +1,17 @@
+---
+- name: Extract explicit policy rejections
+  ansible.builtin.set_fact:
+    _m2_failed_policies: >-
+      {{ _m2_admission.stderr | regex_findall('failed policy:\s*([a-z0-9-]+)') | unique }}
+
+- name: Require the expected admission outcome, not an unrelated API failure
+  ansible.builtin.assert:
+    that:
+      - >-
+        (_m2_required_policies | length == 0 and _m2_admission.rc == 0)
+        or (_m2_required_policies | length > 0 and _m2_admission.rc != 0)
+      - _m2_required_policies | difference(_m2_failed_policies) | length == 0
+      - _m2_forbidden_policies | intersect(_m2_failed_policies) | length == 0
+      - >-
+        _m2_admission.stderr is not search('(?i)(context deadline exceeded|i/o timeout|TLS handshake|x509:|no such host|connection refused|TOOMANYREQUESTS|MANIFEST_UNKNOWN|manifest unknown|unexpected status code|unauthorized:|UNAUTHORIZED)')
+    fail_msg: "Unexpected admission response: {{ _m2_admission.stderr }}"

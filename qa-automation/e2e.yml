@@ -20,15 +20,14 @@
 - name: "E2E — Module 1: The Developer Experience"
   ansible.builtin.import_playbook: e2e-module-01.yml
 
+- name: "E2E — Module 2: Secured Software Supply Chain"
+  ansible.builtin.import_playbook: e2e-module-02.yml
+
 - name: "E2E — Module 3: App Connectivity for AI"
   ansible.builtin.import_playbook: e2e-module-03.yml
 
 - name: "E2E — Module 4: AI-Powered Troubleshooting"
   ansible.builtin.import_playbook: e2e-module-04.yml
-
-# --- Pending modules — uncomment when content is delivered ---
-# - name: "E2E — Module 2: TBD"
-#   ansible.builtin.import_playbook: e2e-module-02.yml
 
 - name: "E2E — Module 5: AI-powered migration using MTA"
   ansible.builtin.import_playbook: e2e-module-05.yml

@@ -1,0 +1,108 @@
+---
+# Readiness, not exercise completion: production may legitimately be Progressing
+# until the student supplies a signed commit and release approval. Do not demand
+# available secured-prod app replicas or a successful production HTTP response.
+- name: Define Module 2 readiness prerequisites
+  ansible.builtin.set_fact:
+    _m2_health_resources:
+      - {api_version: tekton.dev/v1, kind: Pipeline, namespace: "{{ _tenant_user }}-secured-build", name: parasol-insurance-secured-push}
+      - {api_version: tekton.dev/v1, kind: Pipeline, namespace: "{{ _tenant_user }}-secured-build", name: parasol-insurance-mr-check}
+      - {api_version: tekton.dev/v1, kind: Pipeline, namespace: "{{ _tenant_user }}-secured-build", name: parasol-insurance-secured-tag-promote}
+      - {api_version: tekton.dev/v1, kind: Task, namespace: "{{ _tenant_user }}-secured-build", name: verify-commit-signature}
+      - {api_version: tekton.dev/v1, kind: Task, namespace: "{{ _tenant_user }}-secured-build", name: acs-image-scan}
+      - {api_version: tekton.dev/v1, kind: Task, namespace: "{{ _tenant_user }}-secured-build", name: acs-image-check}
+      - {api_version: tekton.dev/v1, kind: Task, namespace: "{{ _tenant_user }}-secured-build", name: ec-validate}
+      - {api_version: tekton.dev/v1, kind: Task, namespace: "{{ _tenant_user }}-secured-build", name: generate-upload-sbom}
+      - {api_version: v1, kind: Secret, namespace: "{{ _tenant_user }}-secured-build", name: gitlab-basic-auth}
+      - {api_version: v1, kind: Secret, namespace: "{{ _tenant_user }}-secured-build", name: quay-push-secret}
+      - {api_version: v1, kind: Secret, namespace: "{{ _tenant_user }}-secured-build", name: sonarqube-credentials}
+      - {api_version: v1, kind: Secret, namespace: "{{ _tenant_user }}-secured-build", name: rhacs-api-token}
+      - {api_version: v1, kind: Secret, namespace: "{{ _tenant_user }}-secured-build", name: tpa-cli-secret}
+      - {api_version: v1, kind: PersistentVolumeClaim, namespace: "{{ _tenant_user }}-secured-build", name: maven-cache}
+      - {api_version: triggers.tekton.dev/v1beta1, kind: EventListener, namespace: "{{ _tenant_user }}-secured-build", name: parasol-insurance-secured-listener}
+      - {api_version: apps/v1, kind: Deployment, namespace: "{{ _tenant_user }}-preprod", name: parasol-insurance}
+      - {api_version: apps/v1, kind: Deployment, namespace: "{{ _tenant_user }}-secured-prod", name: parasol-insurance}
+      - {api_version: route.openshift.io/v1, kind: Route, namespace: "{{ _tenant_user }}-preprod", name: parasol-insurance}
+      - {api_version: route.openshift.io/v1, kind: Route, namespace: "{{ _tenant_user }}-secured-prod", name: parasol-insurance}
+      - {api_version: policy.sigstore.dev/v1beta1, kind: ClusterImagePolicy, name: parasol-image-signature-required}
+      - {api_version: policy.sigstore.dev/v1beta1, kind: ClusterImagePolicy, name: parasol-signed-commit-required}
+      - {api_version: policy.sigstore.dev/v1beta1, kind: ClusterImagePolicy, name: parasol-release-approval-required}
+
+- name: Read Module 2 prerequisites without exposing secret data
+  kubernetes.core.k8s_info:
+    api_version: "{{ item.api_version }}"
+    kind: "{{ item.kind }}"
+    namespace: "{{ item.namespace | default(omit) }}"
+    name: "{{ item.name }}"
+  loop: "{{ _m2_health_resources }}"
+  register: _m2_health_lookups
+  failed_when: false
+  no_log: true
+
+- name: Record missing Module 2 prerequisites
+  ansible.builtin.set_fact:
+    healthcheck_failures: >-
+      {{ healthcheck_failures + ['Module 2: ' ~ item.item.kind ~ ' ' ~
+         (item.item.namespace | default('cluster')) ~ '/' ~ item.item.name ~ ' missing or unreadable'] }}
+  loop: "{{ _m2_health_lookups.results }}"
+  loop_control:
+    label: "{{ item.item.kind }}/{{ item.item.name }}"
+  when: item.resources | default([]) | length != 1
+  no_log: true
+
+- name: Record empty credential secrets or unbound build storage
+  ansible.builtin.set_fact:
+    healthcheck_failures: >-
+      {{ healthcheck_failures + ['Module 2: ' ~ item.item.kind ~ ' ' ~ item.item.name ~ ' is not ready'] }}
+  loop: "{{ _m2_health_lookups.results }}"
+  loop_control:
+    label: "{{ item.item.kind }}/{{ item.item.name }}"
+  when:
+    - item.resources | default([]) | length == 1
+    - >-
+      (item.item.kind == 'Secret' and item.resources[0].data | default({}) | length == 0)
+      or (item.item.kind == 'PersistentVolumeClaim' and item.resources[0].status.phase | default('') != 'Bound')
+  no_log: true
+
+- name: Read secured production namespace enforcement label
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: "{{ _tenant_user }}-secured-prod"
+  register: _m2_enforcement_namespace
+
+- name: Record missing production admission opt-in
+  ansible.builtin.set_fact:
+    healthcheck_failures: "{{ healthcheck_failures + ['Module 2: secured-prod must have policy.rhtas.com/include=true'] }}"
+  when: >-
+    _m2_enforcement_namespace.resources | length == 0
+    or _m2_enforcement_namespace.resources[0].metadata.labels['policy.rhtas.com/include'] | default('') != 'true'
+
+- name: Read Module 2 shared-service deployments
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ item.namespace }}"
+    name: "{{ item.name }}"
+  loop:
+    - {namespace: rhacs, name: central}
+    - {namespace: openshift-pipelines, name: tekton-chains-controller}
+    - {namespace: trusted-artifact-signer, name: fulcio-server}
+    - {namespace: trusted-artifact-signer, name: rekor-server}
+    - {namespace: trusted-artifact-signer, name: tuf}
+    - {namespace: trusted-profile-analyzer, name: server}
+    - {namespace: rhda-backend, name: rhda-backend}
+    - {namespace: parasol-approval, name: parasol-approval}
+    - {namespace: policy-controller-operator, name: policy-controller-webhook}
+  register: _m2_service_lookups
+
+- name: Record unavailable Module 2 shared services
+  ansible.builtin.set_fact:
+    healthcheck_failures: >-
+      {{ healthcheck_failures + ['Module 2: service deployment ' ~ item.item.namespace ~ '/' ~ item.item.name ~ ' is unavailable'] }}
+  loop: "{{ _m2_service_lookups.results }}"
+  loop_control:
+    label: "{{ item.item.namespace }}/{{ item.item.name }}"
+  when: >-
+    item.resources | length == 0
+    or item.resources[0].status.availableReplicas | default(0) | int < 1
