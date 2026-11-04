@@ -42,8 +42,10 @@ ansible-playbook qa-automation/e2e-module-02.yml \
   -e @/secure/qa-inputs.yml -e module2_allow_mutations=true
 ```
 
-The same consent variable is required when using `qa-automation/e2e.yml`, which
-now imports Module 2 alongside the existing modules.
+Selecting `qa-automation/e2e.yml` (including `/stream/qa/e2e`) explicitly opts
+into the full mutating suite; the orchestrator passes Module 2 consent itself.
+The standalone Module 2 playbook still requires `module2_allow_mutations=true`.
+Healthcheck never enables mutation consent.
 
 Additional inputs: student `password` and `openshift_cluster_ingress_domain`
 (from Showroom user data or explicit extra variables). Authentication can also
@@ -114,8 +116,14 @@ reports/Quick Fix recommendations, or the intermediate 3.20.5 version's report.
 Those require a browser-assisted test. Updating dependencies and seeing ACS
 results is not claimed as validation of the RHDA UI or a fixed CVE count.
 
-This change adds Module 2 coverage; the previously identified workflow/assertion
-gaps in Modules 1, 3, 4 and 5 remain separate follow-up work.
+Module 1 now provisions the actual development sandbox, tests the documented
+SonarQube failure and correction with source fixtures from the exercise, waits
+for exact commit/tag pipelines, merges the required production GitOps MR, and
+asserts real statistics JSON in dev/prod. AI backend inference is exercised; the
+documented corrected-source fallback is used for repeatability. Browser catalog
+registration and IDE navigation remain manual. Modules 3, 4 and 5 still have
+separately identified coverage gaps; reaching them is not evidence that their
+existing load simulations validate every exercise outcome.
 
 ## Offline validation (Ansible only)
 

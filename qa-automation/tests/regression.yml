@@ -171,6 +171,65 @@
         loop_var: qa_case
         label: "{{ qa_case.name }}"
 
+    - name: Test Module 1 statistics failures cannot be silently accepted
+      ansible.builtin.include_tasks: case.yml
+      loop:
+        - name: valid-seeded-statistics
+          helper: ../tasks/module1-assert-stats.yml
+          stats:
+            status: 200
+            json: {total: 3, by_category: {auto: 2, home: 1}, by_status: {open: 3}}
+        - name: stats-404-must-fail
+          helper: ../tasks/module1-assert-stats.yml
+          stats: {status: 404}
+          must_fail: true
+        - name: empty-stats-must-fail
+          helper: ../tasks/module1-assert-stats.yml
+          stats: {status: 200, json: {}}
+          must_fail: true
+        - name: empty-seed-data-must-fail
+          helper: ../tasks/module1-assert-stats.yml
+          stats:
+            status: 200
+            json: {total: 0, by_category: {}, by_status: {}}
+          must_fail: true
+        - name: inconsistent-breakdowns-must-fail
+          helper: ../tasks/module1-assert-stats.yml
+          stats:
+            status: 200
+            json: {total: 3, by_category: {auto: 2}, by_status: {open: 3}}
+          must_fail: true
+      loop_control:
+        loop_var: qa_case
+        label: "{{ qa_case.name }}"
+
+    - name: Read the current Module 1 exercise code blocks
+      ansible.builtin.set_fact:
+        _m1_guide: >-
+          {{ lookup('ansible.builtin.file', lookup('ansible.builtin.first_found',
+             [playbook_dir ~ '/../../content/modules/ROOT/pages/module-01/02-developer-experience.adoc',
+              '/showroom/repo/content/modules/ROOT/pages/module-01/02-developer-experience.adoc'])) }}
+
+    - name: Extract the exercise's source fixtures
+      ansible.builtin.set_fact:
+        _m1_documented_java: >-
+          {{ _m1_guide | regex_findall('(?s)\[source,java,role="copypaste"\]\n----\n(.*?)\n----') }}
+
+    - name: Require the test fixtures to match the actual exercise
+      ansible.builtin.assert:
+        that:
+          - _m1_documented_java | length == 2
+          - (_m1_documented_java[0] | trim) == (lookup('ansible.builtin.file', playbook_dir ~ '/../fixtures/module1/ClaimsStatsResource.initial.java') | trim)
+          - (_m1_documented_java[1] | trim) == (lookup('ansible.builtin.file', playbook_dir ~ '/../fixtures/module1/ClaimsStatsResource.fixed.java') | trim)
+
+    - name: Require the full streamed suite to opt into its documented mutations
+      ansible.builtin.assert:
+        that:
+          - >-
+            (lookup('ansible.builtin.file', playbook_dir ~ '/../e2e.yml') | from_yaml
+             | selectattr('name', 'search', 'Module 2:')
+             | first).vars.module2_allow_mutations | bool
+
     - name: Supply an unsafe Backstage template as returned by the GitLab API
       ansible.builtin.set_fact:
         _m2_template_open: !unsafe '${{'
