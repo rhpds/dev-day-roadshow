@@ -54,7 +54,7 @@ image::m02-rhdh-mr-check-pipeline.png[MR check pipeline in Developer Hub on Para
 * **Scans and checks** the image against ACS policies
 * **Reports results** back to GitLab as commit statuses and a detailed MR comment
 
-. Wait for the pipeline to complete.
+. Wait for the pipeline to complete (this typically takes 3-5 minutes).
 
 . Go back to the merge request page in GitLab 
 * The "Merge" button has been activated, so you can merge - but before you do 
@@ -77,6 +77,8 @@ This triggers the **post-merge build pipeline** -- the **__final image__** is bu
 +
 image::m02-rhdh-post-merge-pipeline.png[Post-merge build pipeline in Developer Hub,link=self,window=blank,width=700]
 
+. Wait for the post-merge build pipeline to complete before proceeding. Return to the **Parasol Insurance (Secured)** component in Developer Hub and click the **CI** tab to watch the pipeline finish (this typically takes 3-5 minutes). If this is the first time the image is being built, the tag-promote step in the next section could fail without a completed build.
+
 '''
 
 [#section-2]
@@ -86,7 +88,7 @@ The post-merge build created a signed image from the `main` branch. To promote i
 
 === Exercise 1: Create a tag
 
-. In GitLab, navigate to **Repository** → **Tags**.
+. In GitLab, find the `{user}/parasol-insurance-secured` repo and navigate to **Code** → **Tags**.
 
 . Click **New tag**.
 
@@ -197,6 +199,8 @@ image::m02-rhdh-open-prod-pr-log.png[Pipeline log showing the merge request link
 The MR on the manifests repository shows all the Conforma validation results, including a link to the image in Quay.
 +
 image::m02-gitlab-prod-mr.png[Production MR on the manifests repository showing Conforma validation results,link=self,window=blank,width=700]
++
+NOTE: You may see warnings for **Image vulnerability summary** (unaddressed vulnerabilities in dependencies) and **SonarQube analysis highlights** (code quality findings). These are informational — they are not severe enough to fail the promotion. You could address them separately as time allows.
 +
 image::m02-gitlab-prod-mr-merge.png[Merge button on the production MR,link=self,window=blank,width=700]
 

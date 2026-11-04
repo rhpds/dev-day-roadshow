@@ -4,6 +4,10 @@ The playbooks run locally in the Showroom automation runner or with
 `ansible-playbook`. They require `kubernetes.core`, the Kubernetes Python client
 used by that collection, and `oc`. Module 2 is implemented entirely in Ansible;
 its Git/signing commands run in the existing secured development-tooling image.
+The image includes gitsign but may omit cosign; E2E fetches the matching cosign
+client from the cluster TAS CLI service and initializes trust before requesting
+an identity. Tool-bootstrap errors are visible without credentials; later signing
+failures report their command stage with known tokens/passwords redacted.
 There is no separate Python test runner.
 
 ## Healthcheck
