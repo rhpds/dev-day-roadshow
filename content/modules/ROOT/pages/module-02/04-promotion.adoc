@@ -54,7 +54,7 @@ image::m02-rhdh-mr-check-pipeline.png[MR check pipeline in Developer Hub on Para
 * **Scans and checks** the image against ACS policies
 * **Reports results** back to GitLab as commit statuses and a detailed MR comment
 
-. Wait for the pipeline to complete.
+. Wait for the pipeline to complete (this typically takes 3-5 minutes).
 
 . Go back to the merge request page in GitLab 
 * The "Merge" button has been activated, so you can merge - but before you do 
