@@ -1,0 +1,19 @@
+---
+- name: Decode sandbox template
+  ansible.builtin.set_fact:
+    _m2_template_content: "{{ _m2_template_file.json.content | b64decode }}"
+
+- name: Render Backstage values using the same workshop parameters
+  ansible.builtin.set_fact:
+    _m2_template_content: "{{ _m2_template_content | replace(_m2_template_open ~ ' values.' ~ item.key ~ ' }}', item.value) }}"
+  loop: "{{ _m2_template_values | dict2items }}"
+  no_log: true
+
+- name: Reject unresolved template values
+  ansible.builtin.assert:
+    that:
+      - _m2_template_open not in _m2_template_content
+
+- name: Add rendered file to sandbox commit
+  ansible.builtin.set_fact:
+    _m2_template_actions: "{{ _m2_template_actions + [{'action': 'create', 'file_path': m2_template_file.path | replace(_m2_template_path, ''), 'content': _m2_template_content}] }}"

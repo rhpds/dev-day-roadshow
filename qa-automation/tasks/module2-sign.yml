@@ -1,0 +1,73 @@
+---
+# The public TAS client permits password grants in this workshop. Use a fresh
+# user ID token, never an admin identity or an unsigned API-created substitute.
+- name: Obtain a short-lived signing identity from Keycloak
+  ansible.builtin.uri:
+    url: "{{ _m2_issuer }}/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      client_id: trusted-artifact-signer
+      scope: openid email profile
+      username: "{{ _tenant_user }}"
+      password: "{{ _tenant_password }}"
+    status_code: 200
+  register: _m2_oidc
+  no_log: true
+
+- name: Require an ID token for real keyless signing
+  ansible.builtin.assert:
+    that:
+      - _m2_oidc.json.id_token | default('') | length > 0
+  no_log: true
+
+- name: Sign and push the security fixes in the secured development image
+  ansible.builtin.command:
+    argv: [oc, exec, -i, "{{ _m2_id }}", -n, "{{ _m2_build }}", --, bash, -se]
+    stdin: |
+      set -euo pipefail
+      umask 077
+      export GIT_TERMINAL_PROMPT=0 GIT_SSL_NO_VERIFY=true
+      export GITSIGN_TOKEN_PROVIDER=filesystem GITSIGN_CREDENTIAL_CACHE=""
+      export QA_GIT_TOKEN={{ _m2_gitlab_oauth.json.access_token | quote }}
+      printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) printf "%s" oauth2;; *) printf "%s" "$QA_GIT_TOKEN";; esac' > /tmp/qa-askpass
+      chmod 700 /tmp/qa-askpass
+      export GIT_ASKPASS=/tmp/qa-askpass
+      if [ ! -d /tmp/qa-source/.git ]; then
+        git clone {{ (_gitlab_url ~ '/' ~ _tenant_user ~ '/parasol-insurance-secured.git') | quote }} /tmp/qa-source >/dev/null 2>&1
+      fi
+      cd /tmp/qa-source
+      git fetch origin {{ _m2_id | quote }} >/dev/null 2>&1
+      git checkout -B {{ _m2_id | quote }} {{ ('origin/' ~ _m2_id) | quote }} >/dev/null 2>&1
+      git config user.name {{ _tenant_user | quote }}
+      git config user.email {{ (_tenant_user ~ '@demo.redhat.com') | quote }}
+      git config gpg.format x509
+      git config gpg.x509.program gitsign
+      git config commit.gpgsign true
+      git config gitsign.fulcio {{ ('https://fulcio-server-trusted-artifact-signer.' ~ _ingress_domain) | quote }}
+      git config gitsign.rekor {{ ('https://rekor-server-trusted-artifact-signer.' ~ _ingress_domain) | quote }}
+      git config gitsign.issuer {{ _m2_issuer | quote }}
+      git config gitsign.clientID trusted-artifact-signer
+      printf '%s' {{ _m2_oidc.json.id_token | quote }} > /var/run/sigstore/cosign/oidc-token
+      trap 'rm -f /var/run/sigstore/cosign/oidc-token /tmp/qa-askpass' EXIT
+      cosign initialize --mirror=http://tuf.trusted-artifact-signer.svc --root=http://tuf.trusted-artifact-signer.svc/root.json >/dev/null 2>&1
+      {% for file in _m2_files %}
+      printf '%s' {{ (file.content | b64encode) | quote }} | base64 -d > {{ file.path | quote }}
+      {% endfor %}
+      git add .
+      git commit -m {{ _m2_commit_message | quote }} >/dev/null 2>&1
+      gitsign verify --certificate-identity={{ (_tenant_user ~ '@demo.redhat.com') | quote }} --certificate-oidc-issuer={{ _m2_issuer | quote }} HEAD >/dev/null 2>&1
+      git push origin {{ _m2_id | quote }} >/dev/null 2>&1
+      git rev-parse HEAD
+  register: _m2_signed_commit
+  no_log: true
+
+- name: Store signed commit SHA
+  ansible.builtin.set_fact:
+    _m2_sha: "{{ _m2_signed_commit.stdout | trim }}"
+
+- name: Require an actual commit SHA
+  ansible.builtin.assert:
+    that:
+      - _m2_sha is match('^[0-9a-f]{40}$')
