@@ -14,6 +14,8 @@
                 health: {status: "{{ startup_case.preprod_health | default('Healthy') }}"}
     _m2_health_lookups:
       results: "{{ startup_case.prerequisites | default([]) }}"
+    _m2_service_lookups:
+      results: "{{ startup_case.services | default([]) }}"
 
 - name: Classify the actual startup logic
   ansible.builtin.include_tasks: ../tasks/classify-module2-startup.yml
@@ -24,9 +26,16 @@
 - name: Apply the actual missing-resource decisions
   ansible.builtin.include_tasks: ../tasks/health-record-module2-resources.yml
 
+- name: Explain and evaluate shared-service availability
+  ansible.builtin.include_tasks: ../tasks/health-report-module2-services.yml
+
 - name: "Verify startup case {{ startup_case.name }}"
   ansible.builtin.assert:
     that:
       - (_m2_prod_release_pending | bool) == (startup_case.pending | default(false) | bool)
       - healthcheck_failures | length == startup_case.failures
+      - "'DO_NOT_PRINT_TEST_VALUE' not in (_m2_prerequisite_report | to_json)"
+      - _m2_prerequisite_report | selectattr('reason', 'equalto', '') | list | length == 0
+      - _qa_argo_report | selectattr('reason', 'equalto', '') | list | length == 0
+      - _m2_service_report | selectattr('reason', 'equalto', '') | list | length == 0
     fail_msg: "{{ startup_case.name }}: {{ healthcheck_failures }}"
