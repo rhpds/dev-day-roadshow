@@ -230,6 +230,58 @@
              | selectattr('name', 'search', 'Module 2:')
              | first).vars.module2_allow_mutations | bool
 
+    - name: Test current and legacy Conforma report shapes without weakening approval checks
+      ansible.builtin.include_tasks: case.yml
+      loop:
+        - name: current-conforma-metadata-code
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma:
+            success: false
+            components:
+              - violations: [{msg: 'No release approval attestation found', metadata: {code: release_approval.approval_present}}]
+                warnings: [{metadata: {code: vulnerability_summary}}, {metadata: {code: sonarqube_highlights}}]
+        - name: legacy-conforma-top-level-code
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma:
+            success: false
+            components:
+              - violations: [{code: release_approval.approval_present}]
+        - name: extra-conforma-security-violation-is-not-approval-only
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma:
+            success: false
+            components:
+              - violations: [{metadata: {code: release_approval.approval_present}}, {metadata: {code: commit_signature.commit_is_signed}}]
+          must_fail: true
+        - name: unknown-conforma-violation-must-fail
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma:
+            success: false
+            components:
+              - violations: [{msg: 'No release approval attestation found'}]
+          must_fail: true
+        - name: successful-report-is-not-the-expected-negative-test
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma:
+            success: true
+            components:
+              - violations: [{metadata: {code: release_approval.approval_present}}]
+          must_fail: true
+        - name: failed-report-without-rule-evidence-must-fail
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma: {success: false, components: []}
+          must_fail: true
+        - name: conflicting-conforma-codes-must-fail
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma:
+            success: false
+            components:
+              - violations: [{code: commit_signature.commit_is_signed, metadata: {code: release_approval.approval_present}}]
+          must_fail: true
+      loop_control:
+        loop_var: qa_case
+        label: "{{ qa_case.name }}"
+
     - name: Read the Module 2 admission fixture sequence
       ansible.builtin.set_fact:
         _m2_fixture_workflow: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../tasks/module2-workflow.yml') }}"

@@ -576,15 +576,8 @@
   ansible.builtin.set_fact:
     _m2_ec_report: "{{ _m2_ec_log.stdout | from_json }}"
 
-- name: Require missing approval to be the only Conforma violation
-  ansible.builtin.assert:
-    that:
-      - not (_m2_ec_report.success | bool)
-      - _m2_ec_report.components | map(attribute='violations', default=[]) | flatten | length > 0
-      - >-
-        _m2_ec_report.components | map(attribute='violations', default=[]) | flatten
-        | rejectattr('code', 'equalto', 'release_approval.approval_present') | list | length == 0
-    fail_msg: Promotion must fail specifically for missing approval, not missing provenance or another security gate.
+- name: Validate the structured Conforma missing-approval report
+  ansible.builtin.include_tasks: module2-assert-conforma-unapproved.yml
 
 - name: Refresh the student's release-approval identity
   ansible.builtin.uri:
