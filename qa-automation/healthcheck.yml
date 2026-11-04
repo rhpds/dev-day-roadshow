@@ -105,6 +105,10 @@
       - namespace: "{{ _tenant_user }}-prod"
         name: parasol-insurance
 
+    # This healthcheck defaults to lab-start readiness. Use post_exercise to
+    # require normal application readiness even for uncompleted starter builds.
+    healthcheck_phase: pre_exercise
+
     # Track results
     healthcheck_failures: []
 
@@ -119,6 +123,7 @@
           - ocp_api_url is defined or openshift_api_url is defined
           - ocp_admin_password is defined or _use_sa_token | bool
           - tenant_user is defined or user is defined
+          - healthcheck_phase in ['pre_exercise', 'post_exercise']
         fail_msg: >-
           Missing required variables.
           CLI: pass ocp_api_url, ocp_admin_password, tenant_user via -e.
@@ -237,8 +242,148 @@
     - name: Classify the known Module 2 pre-release production gate
       ansible.builtin.import_tasks: tasks/classify-module2-startup.yml
 
+    - name: Keep post-exercise production checks strict
+      ansible.builtin.set_fact:
+        _m2_prod_release_pending: false
+      when: healthcheck_phase == 'post_exercise'
+
+    - name: Prepare the preprod startup readiness decision
+      ansible.builtin.set_fact:
+        _m2_preprod_initial_build_pending: false
+        _hc_m2_preprod_app: >-
+          {{ r_argo_checks.results | selectattr('item', 'equalto', _tenant_user ~ '-preprod')
+             | map(attribute='resources') | flatten | first | default({}) }}
+      no_log: true
+
+    # A lab-start check must not require the learner to finish commit signing.
+    # Only recognize the untouched initial starter run, not arbitrary degradation.
+    - name: Inspect Module 2 pre-exercise startup state
+      when:
+        - healthcheck_phase == 'pre_exercise'
+        - _hc_m2_preprod_app.status.health.status | default('') == 'Degraded'
+        - _hc_m2_preprod_app.status.sync.status | default('') == 'Synced'
+        - _hc_m2_preprod_app.status.conditions | default([], true) | length == 0
+      block:
+        - name: Read the initial build and preprod readiness evidence
+          kubernetes.core.k8s_info:
+            host: "{{ _k8s_host | default(omit, true) }}"
+            api_key: "{{ _k8s_api_key | default(omit, true) }}"
+            validate_certs: "{{ _k8s_validate_certs }}"
+            api_version: "{{ item.api_version }}"
+            kind: "{{ item.kind }}"
+            namespace: "{{ item.namespace }}"
+            name: "{{ item.name | default(omit) }}"
+            label_selectors: "{{ item.labels | default(omit) }}"
+          loop:
+            - {api_version: tekton.dev/v1, kind: PipelineRun, namespace: "{{ _tenant_user }}-secured-build"}
+            - {api_version: tekton.dev/v1, kind: TaskRun, namespace: "{{ _tenant_user }}-secured-build", labels: [tekton.dev/pipelineTask=verify-commit-signature]}
+            - {api_version: apps/v1, kind: Deployment, namespace: "{{ _tenant_user }}-preprod", name: parasol-db}
+            - {api_version: v1, kind: PersistentVolumeClaim, namespace: "{{ _tenant_user }}-preprod", name: parasol-db}
+            - {api_version: apps/v1, kind: Deployment, namespace: "{{ _tenant_user }}-preprod", name: parasol-insurance}
+            - {api_version: v1, kind: Pod, namespace: "{{ _tenant_user }}-preprod", labels: [app=parasol-insurance]}
+            - {api_version: external-secrets.io/v1beta1, kind: ExternalSecret, namespace: "{{ _tenant_user }}-preprod", name: kafka-credentials}
+            - {api_version: external-secrets.io/v1beta1, kind: ExternalSecret, namespace: "{{ _tenant_user }}-preprod", name: litellm-credentials}
+          register: _hc_m2_initial_checks
+          failed_when: false
+          no_log: true
+
+        - name: Select initial push builds and application container states
+          ansible.builtin.set_fact:
+            _hc_m2_push_runs: >-
+              {{ _hc_m2_initial_checks.results[0].resources | default([])
+                 | selectattr('spec.pipelineRef.name', 'defined')
+                 | selectattr('spec.pipelineRef.name', 'equalto', 'parasol-insurance-secured-push') | list }}
+            _hc_m2_app_containers: >-
+              {{ _hc_m2_initial_checks.results[5].resources | default([])
+                 | selectattr('status.containerStatuses', 'defined')
+                 | map(attribute='status.containerStatuses') | flatten
+                 | selectattr('name', 'equalto', 'parasol-insurance') | list }}
+          no_log: true
+
+        - name: Select the starter build and its exact signature-verification task
+          ansible.builtin.set_fact:
+            _hc_m2_starter_run: "{{ _hc_m2_push_runs | first | default({}) }}"
+            _hc_m2_starter_signature_json: >-
+              {% set signatures = [] %}
+              {% set starter = _hc_m2_push_runs | first | default({}) %}
+              {% for task in _hc_m2_initial_checks.results[1].resources | default([]) %}
+              {% if task.metadata.labels['tekton.dev/pipelineRun'] | default('') == starter.metadata.name | default('no-starter') %}
+              {% set outputs = task.status.results | default(task.status.taskResults | default([]))
+                 | items2dict(key_name='name', value_name='value') %}
+              {% set conditions = task.status.conditions | default([]) %}
+              {% set condition = conditions | selectattr('type', 'equalto', 'Succeeded') | first | default({}) %}
+              {% set _ = signatures.append({'status': condition.status | default('Unknown'),
+                 'signature': outputs.SIGNATURE_STATUS | default('Unknown')}) %}
+              {% endif %}
+              {% endfor %}
+              {{ signatures | to_json }}
+          no_log: true
+
+        - name: Decode the metadata-only starter signature result
+          ansible.builtin.set_fact:
+            _hc_m2_starter_signatures: "{{ _hc_m2_starter_signature_json | from_json }}"
+          no_log: true
+
+        - name: Recognize only an initial unsigned starter awaiting the learner's signed build
+          ansible.builtin.set_fact:
+            _m2_preprod_initial_build_pending: true
+          when:
+            - _hc_m2_push_runs | length == 1
+            - "{'name': 'git-revision', 'value': 'main'} in _hc_m2_starter_run.spec.params"
+            - _hc_m2_starter_run.status.conditions | default([]) | selectattr('type', 'equalto', 'Succeeded') | selectattr('status', 'equalto', 'False') | list | length == 1
+            - _hc_m2_starter_signatures | length == 1
+            - _hc_m2_starter_signatures[0].status == 'False'
+            - _hc_m2_starter_signatures[0].signature == 'UNSIGNED'
+            - _hc_m2_initial_checks.results[2].resources | default([]) | length == 1
+            - _hc_m2_initial_checks.results[2].resources[0].status.availableReplicas | default(0) | int > 0
+            - _hc_m2_initial_checks.results[3].resources | default([]) | length == 1
+            - _hc_m2_initial_checks.results[3].resources[0].status.phase | default('') == 'Bound'
+            - _hc_m2_initial_checks.results[4].resources | default([]) | length == 1
+            - _hc_m2_initial_checks.results[4].resources[0].status.availableReplicas | default(0) | int == 0
+            - >-
+              _hc_m2_initial_checks.results[4].resources[0].spec.template.spec.containers
+              | selectattr('name', 'equalto', 'parasol-insurance')
+              | selectattr('image', 'match', '^quay[.][^ /]+/' ~ (_tenant_user | regex_escape) ~ '/parasol-insurance-secured:latest$') | list | length == 1
+            - _hc_m2_app_containers | length > 0
+            - >-
+              _hc_m2_app_containers | selectattr('state.waiting.reason', 'defined')
+              | selectattr('state.waiting.reason', 'in', ['ImagePullBackOff', 'ErrImagePull'])
+              | list | length == _hc_m2_app_containers | length
+            - _hc_m2_initial_checks.results[6].resources | default([]) | length == 1
+            - _hc_m2_initial_checks.results[6].resources[0].status.conditions | default([]) | selectattr('type', 'equalto', 'Ready') | selectattr('status', 'equalto', 'True') | list | length == 1
+            - _hc_m2_initial_checks.results[7].resources | default([]) | length == 1
+            - _hc_m2_initial_checks.results[7].resources[0].status.conditions | default([]) | selectattr('type', 'equalto', 'Ready') | selectattr('status', 'equalto', 'True') | list | length == 1
+
+    - name: Explain pre-exercise preprod readiness
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'EXPECTED' if _m2_preprod_initial_build_pending | bool else 'INFO' }} — {{ _tenant_user }}-preprod:
+          {{ 'The only initial build stopped at UNSIGNED; the starter image is not built yet. Database, storage and runtime credentials are ready. The learner must complete the signed build; E2E validates rollout. This is not an infrastructure readiness failure.'
+             if _m2_preprod_initial_build_pending | bool else 'No bounded initial-build exception applies; normal application health checks remain enforced.' }}
+
+    - name: Prepare application results without changing their actual reported status
+      ansible.builtin.set_fact:
+        _hc_argo_original: "{{ r_argo_checks }}"
+        _hc_argo_for_report:
+          results: >-
+            {{ (r_argo_checks.results | rejectattr('item', 'equalto', _tenant_user ~ '-preprod') | list)
+               if _m2_preprod_initial_build_pending | bool else r_argo_checks.results }}
+      no_log: true
+
+    # Registered variables outrank import-task vars. Temporarily give the
+    # existing reporter only checks not already explained as EXPECTED above.
+    - name: Select application results for the normal failure reporter
+      ansible.builtin.set_fact:
+        r_argo_checks: "{{ _hc_argo_for_report }}"
+      no_log: true
+
     - name: Record unhealthy applications without hiding unrelated failures
       ansible.builtin.import_tasks: tasks/health-record-argo.yml
+
+    - name: Restore the unchanged actual application status snapshot
+      ansible.builtin.set_fact:
+        r_argo_checks: "{{ _hc_argo_original }}"
+      no_log: true
 
     # =========================================================================
     # Check 3: Key deployments have available replicas
