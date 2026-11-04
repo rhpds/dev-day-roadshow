@@ -14,6 +14,9 @@
         _m2_admission: "{{ qa_case.admission | default({}) }}"
         _m2_required_policies: "{{ qa_case.required | default([]) }}"
         _m2_forbidden_policies: "{{ qa_case.forbidden | default([]) }}"
+        _m2_admission_image: "{{ qa_case.image | default('') }}"
+        _m2_build_results: {IMAGE_DIGEST: "{{ 'sha256:' ~ ('a' * 64) }}"}
+        _m2_preprod_pods: "{{ qa_case.pods | default({'resources': []}) }}"
   rescue:
     - name: Record expected assertion failures
       ansible.builtin.set_fact:
