@@ -235,14 +235,20 @@
       - _litellm_endpoint | length > 0
       - _litellm_key | length > 0
 
-- name: Exercise the AI coding-assistant backend
+- name: "LiteLLM check [Module 1]: real inference and read-only tool calling"
+  ansible.builtin.include_tasks: litellm-check.yml
+  vars:
+    litellm_check_module: Module 1
+    litellm_check_model: "{{ e2e_module1_litellm_model | default('qwen3-235b') }}"
+
+- name: "LiteLLM check [Module 1]: coding-assistant inference"
   ansible.builtin.uri:
     url: "{{ _litellm_endpoint }}/chat/completions"
     method: POST
     headers: {Authorization: "Bearer {{ _litellm_key }}"}
     body_format: json
     body:
-      model: qwen3-235b
+      model: "{{ e2e_module1_litellm_model | default('qwen3-235b') }}"
       messages:
         - role: user
           content: Replace System.out.println, empty catch blocks and field injection in a Quarkus REST resource with proper logging and constructor injection.
@@ -251,12 +257,12 @@
   register: _m1_ai
   no_log: true
 
-- name: Require an actual AI response
-  ansible.builtin.assert:
-    that:
-      - _m1_ai.json.choices | default([]) | length > 0
-      - _m1_ai.json.choices[0].message.content | default('') | length > 0
-  no_log: true
+- name: "LiteLLM check [Module 1]: require coding response and record usage"
+  ansible.builtin.include_tasks: litellm-report-calls.yml
+  vars:
+    litellm_check_module: Module 1
+    litellm_check_model: "{{ e2e_module1_litellm_model | default('qwen3-235b') }}"
+    litellm_check_calls: "{{ [_m1_ai] }}"
 
 # Use the documented manual fallback after exercising AI. A deterministic
 # fixture makes the acceptance test repeatable without trusting generated code.

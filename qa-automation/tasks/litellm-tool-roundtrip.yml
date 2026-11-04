@@ -1,0 +1,101 @@
+---
+# One real model -> MCP read -> model final-answer exchange. No synthetic echo.
+- name: "LiteLLM check [{{ _lc_module }}]: Ask the tenant's model to select the discovered tool"
+  ansible.builtin.uri:
+    url: "{{ _lc_llm }}/chat/completions"
+    method: POST
+    headers: {Authorization: "Bearer {{ _lc_key }}"}
+    body_format: json
+    body:
+      model: "{{ _lc_model }}"
+      user: "{{ _lc_user }}"
+      messages: "{{ _lc_messages }}"
+      tools:
+        - type: function
+          function:
+            name: "{{ _lc_tool.name }}"
+            description: "{{ _lc_tool.description }}"
+            parameters: "{{ _lc_tool.inputSchema }}"
+      tool_choice: auto
+      max_tokens: 1024
+      metadata: {test_run: "{{ _lc_run }}", module: "{{ _lc_module }}", purpose: readonly-mcp-roundtrip}
+    status_code: 200
+  register: _lc_first
+  failed_when: false
+  no_log: true
+
+- name: "LiteLLM check [{{ _lc_module }}]: assert structured tool selection"
+  ansible.builtin.include_tasks: litellm-assert-selection.yml
+
+- name: "LiteLLM check [{{ _lc_module }}]: Execute the actual read-only tool against MCP using the student's token"
+  ansible.builtin.uri:
+    url: "{{ _lc_url }}"
+    method: POST
+    headers: "{{ _lc_headers }}"
+    body_format: json
+    body:
+      jsonrpc: '2.0'
+      id: 3
+      method: tools/call
+      params:
+        name: "{{ _lc_call.function.name }}"
+        arguments: "{{ _lc_arguments }}"
+    status_code: 200
+  register: _lc_rpc_result
+  failed_when: false
+  no_log: true
+
+- name: "LiteLLM check [{{ _lc_module }}]: Decode the real MCP tool result"
+  ansible.builtin.include_tasks: litellm-decode-mcp.yml
+  vars: {_lc_rpc_method: tools/call}
+
+- name: "LiteLLM check [{{ _lc_module }}]: Select the actual textual result for the model's tool-result turn"
+  ansible.builtin.set_fact:
+    _lc_tool_text: "{{ _lc_rpc.result.content | default([]) | selectattr('type', 'equalto', 'text') | map(attribute='text') | join('\n') }}"
+  no_log: true
+
+- name: "LiteLLM check [{{ _lc_module }}]: assert real MCP evidence"
+  ansible.builtin.include_tasks: litellm-assert-tool-result.yml
+
+- name: "LiteLLM check [{{ _lc_module }}]: Return the actual MCP result to the same model"
+  ansible.builtin.uri:
+    url: "{{ _lc_llm }}/chat/completions"
+    method: POST
+    headers: {Authorization: "Bearer {{ _lc_key }}"}
+    body_format: json
+    body:
+      model: "{{ _lc_model }}"
+      user: "{{ _lc_user }}"
+      messages: >-
+        {{ _lc_messages + [
+           {'role': 'assistant', 'content': _lc_first.json.choices[0].message.content | default(none),
+            'tool_calls': _lc_first.json.choices[0].message.tool_calls},
+           {'role': 'tool', 'tool_call_id': _lc_call.id, 'content': _lc_tool_text}] }}
+      tools:
+        - type: function
+          function:
+            name: "{{ _lc_tool.name }}"
+            description: "{{ _lc_tool.description }}"
+            parameters: "{{ _lc_tool.inputSchema }}"
+      tool_choice: none
+      max_tokens: 512
+      metadata: {test_run: "{{ _lc_run }}", module: "{{ _lc_module }}", purpose: readonly-mcp-roundtrip}
+    status_code: 200
+  register: _lc_final
+  failed_when: false
+  no_log: true
+
+- name: "LiteLLM check [{{ _lc_module }}]: assert grounded final answer and usage"
+  ansible.builtin.include_tasks: litellm-assert-final.yml
+
+- name: "LiteLLM check [{{ _lc_module }}]: Record safe evidence and both rounds of real token usage"
+  ansible.builtin.set_fact:
+    _lc_results: >-
+      {{ _lc_results + [{'model': _lc_model, 'tool': _lc_call.function.name,
+         'namespace': _lc_namespace, 'pod_verified': _lc_expected_pod,
+         'first_request': _lc_first.json.id | default(''),
+         'final_request': _lc_final.json.id | default(''),
+         'first_tokens': _lc_first.json.usage.total_tokens | int,
+         'final_tokens': _lc_final.json.usage.total_tokens | int,
+         'total_tokens': (_lc_first.json.usage.total_tokens | int) + (_lc_final.json.usage.total_tokens | int),
+         'inference_elapsed_seconds': (_lc_first.elapsed | default(0) | int) + (_lc_final.elapsed | default(0) | int)}] }}

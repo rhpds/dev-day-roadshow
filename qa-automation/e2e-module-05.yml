@@ -75,6 +75,12 @@
         _k8s_validate_certs: true
       when: not (_use_sa_token | bool)
 
+    - name: "LiteLLM check [Module 5]: MTA model and read-only tool compatibility"
+      ansible.builtin.include_tasks: tasks/litellm-check.yml
+      vars:
+        litellm_check_module: Module 5
+        litellm_check_model: "{{ e2e_module5_litellm_model | default('qwen3-235b') }}"
+
     # =================================================================
     # SECTIONS 4-6: DLS AI-assisted refactoring (LiteLLM load on MaaS)
     # =================================================================
@@ -82,7 +88,7 @@
     # requires interactive student login (postStart hook injects OCP creds).
     # Healthcheck validates the DevWorkspace exists; E2E tests the rest.
 
-    - name: "S4-S6: LiteLLM DLS — MDB to Reactive Messaging refactoring"
+    - name: "LiteLLM check [Module 5]: MDB to Reactive Messaging refactoring"
       ansible.builtin.uri:
         url: "{{ _litellm_endpoint }}/chat/completions"
         method: POST
@@ -91,7 +97,7 @@
           Content-Type: "application/json"
         body_format: json
         body:
-          model: qwen3-235b
+          model: "{{ e2e_module5_litellm_model | default('qwen3-235b') }}"
           messages:
             - role: system
               content: "You are Red Hat Developer Lightspeed for MTA. Assist with Java EE to Quarkus migration."
@@ -110,9 +116,9 @@
         extended: true
       register: r_dls_calls
       no_log: true
-      ignore_errors: true
+      failed_when: false
 
-    - name: "S4-S6: LiteLLM DLS — repeat load (stress MaaS throughput)"
+    - name: "LiteLLM check [Module 5]: repeat load (stress MaaS throughput)"
       ansible.builtin.uri:
         url: "{{ _litellm_endpoint }}/chat/completions"
         method: POST
@@ -121,7 +127,7 @@
           Content-Type: "application/json"
         body_format: json
         body:
-          model: qwen3-235b
+          model: "{{ e2e_module5_litellm_model | default('qwen3-235b') }}"
           messages:
             - role: system
               content: "You are Red Hat Developer Lightspeed for MTA. Assist with Java EE to Quarkus migration."
@@ -136,7 +142,14 @@
         label: "dls-load-{{ item }}"
       register: r_dls_load
       no_log: true
-      ignore_errors: true
+      failed_when: false
+
+    - name: "LiteLLM check [Module 5]: validate every DLS response and record actual usage"
+      ansible.builtin.include_tasks: tasks/litellm-report-calls.yml
+      vars:
+        litellm_check_module: Module 5
+        litellm_check_model: "{{ e2e_module5_litellm_model | default('qwen3-235b') }}"
+        litellm_check_calls: "{{ (r_dls_calls.results | default([])) + (r_dls_load.results | default([])) }}"
 
     # =================================================================
     # SECTION 7: Deploy Quarkus app to OpenShift

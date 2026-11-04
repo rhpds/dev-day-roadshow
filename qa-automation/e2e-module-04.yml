@@ -176,6 +176,31 @@
           {% endfor %}
       when: e2e_failures | length > 0
 
+    - name: "LiteLLM check [Module 4]: read the configured Lightspeed model"
+      kubernetes.core.k8s_info:
+        host: "{{ _k8s_host | default(omit, true) }}"
+        api_key: "{{ _k8s_api_key | default(omit, true) }}"
+        validate_certs: "{{ _k8s_validate_certs }}"
+        api_version: ols.openshift.io/v1alpha1
+        kind: OLSConfig
+        name: cluster
+      register: _m4_litellm_ols
+      no_log: true
+
+    - name: "LiteLLM check [Module 4]: require a configured model"
+      ansible.builtin.assert:
+        that:
+          - _m4_litellm_ols.resources | length == 1
+          - _m4_litellm_ols.resources[0].spec.ols.defaultModel | default('') | length > 0
+
+    # Validate the tenant-key route for the configured model. This is not a
+    # substitute for Lightspeed service/shared-key or UI/MCP business-flow tests.
+    - name: "LiteLLM check [Module 4]: configured model and read-only tool compatibility"
+      ansible.builtin.include_tasks: tasks/litellm-check.yml
+      vars:
+        litellm_check_module: Module 4
+        litellm_check_model: "{{ e2e_module4_litellm_model | default(_m4_litellm_ols.resources[0].spec.ols.defaultModel) }}"
+
     # =================================================================
     # EXERCISE 1: Investigate + fix frontend timeout (parasol-web)
     # =================================================================
