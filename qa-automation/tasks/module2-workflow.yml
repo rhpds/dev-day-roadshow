@@ -248,7 +248,7 @@
       - path: pom.xml
         content: "{{ _m2_pom | regex_replace('<quarkus.platform.version>[^<]+</quarkus.platform.version>', '<quarkus.platform.version>' ~ (module2_quarkus_version | default('3.40.1')) ~ '</quarkus.platform.version>') }}"
       - path: Containerfile
-        content: "{{ _m2_containerfile | regex_replace('(?m)^FROM .+', 'FROM registry.access.redhat.com/ubi9/openjdk-21-runtime:1.20') }}"
+        content: "{{ _m2_containerfile | regex_replace('(?m)^FROM .+', 'FROM registry.access.redhat.com/hi/openjdk:21-runtime') }}"
       - path: qa-e2e.txt
         content: "{{ _m2_id }} signed security remediation\n"
 
