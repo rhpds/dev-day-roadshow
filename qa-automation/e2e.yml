@@ -20,8 +20,12 @@
 - name: "E2E — Module 1: The Developer Experience"
   ansible.builtin.import_playbook: e2e-module-01.yml
 
+# Selecting the full E2E suite explicitly opts into its mutating workflows.
+# Standalone Module 2 still requires the flag; healthcheck never enables it.
 - name: "E2E — Module 2: Secured Software Supply Chain"
   ansible.builtin.import_playbook: e2e-module-02.yml
+  vars:
+    module2_allow_mutations: true
 
 - name: "E2E — Module 3: App Connectivity for AI"
   ansible.builtin.import_playbook: e2e-module-03.yml
