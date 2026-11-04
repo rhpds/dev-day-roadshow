@@ -39,16 +39,8 @@
   failed_when: false
   no_log: true
 
-- name: Record missing Module 2 prerequisites
-  ansible.builtin.set_fact:
-    healthcheck_failures: >-
-      {{ healthcheck_failures + ['Module 2: ' ~ item.item.kind ~ ' ' ~
-         (item.item.namespace | default('cluster')) ~ '/' ~ item.item.name ~ ' missing or unreadable'] }}
-  loop: "{{ _m2_health_lookups.results }}"
-  loop_control:
-    label: "{{ item.item.kind }}/{{ item.item.name }}"
-  when: item.resources | default([]) | length != 1
-  no_log: true
+- name: Record missing resources except the specifically classified initial production gate
+  ansible.builtin.import_tasks: health-record-module2-resources.yml
 
 - name: Record empty credential secrets or unbound build storage
   ansible.builtin.set_fact:

@@ -23,8 +23,15 @@ services. Missing routes are failures, not skipped HTTP tests.
 **Readiness is not exercise completion.** ArgoCD `Progressing` remains allowed.
 `OutOfSync` is reported separately as a warning: shared Dev Spaces ownership can
 cause it even when applications are healthy. Secured production can legitimately
-be awaiting a signed release and approval; Module 2 does not require its app pods
-or HTTP route to be ready before the student performs that exercise. Camel's
+be awaiting its first signed release: the initial `:1.0` Deployment is rejected
+because it is not digest-pinned. The healthcheck recognizes **only that exact
+Policy Controller failure**, at the current manifests revision, with exactly one
+failed sync task and no other drift/conditions. In that state it reports an
+expected gate instead of failing the production app or its missing Deployment.
+It does not exempt other Degraded states, later release tags, missing applications,
+RBAC/storage problems or failed promoted digests. Preprod is always checked
+normally; an initial build/signature failure and ImagePullBackOff remain failures.
+Camel's
 zero-replica starting state, stopped MTA workspaces and seeded troubleshooting
 faults remain unchanged.
 
@@ -58,10 +65,12 @@ and removes it in `always`, including after failures.
 4. Push an unsigned negative-test commit: the sandbox must succeed and report
    `UNSIGNED`, while the enforced MR must fail specifically at signature
    verification and GitLab must refuse the merge.
-5. Push a genuinely signed correction, require the MR checks to pass, wait for
-   Chains signing, then test unsigned and signed-but-unapproved image rejection.
+5. Push a genuinely signed correction, require the MR signature and build checks
+   to pass, wait for Chains signing, then test unsigned and signed-but-unapproved
+   image rejection using **immutable digests**, not image tags.
 6. Merge the signed source MR, verify the post-merge signature/ACS results and
-   immutable image digest, and wait for Chains provenance.
+   immutable image digest, wait for Chains provenance, and require a ready preprod
+   application container running that exact digest before creating a release tag.
 7. Create a release tag and require Conforma to reject it before approval.
 8. Submit a **real signed release approval** through the approval application's
    API using the student's identity. Create another release tag; require successful
@@ -73,7 +82,11 @@ and removes it in `always`, including after failures.
 Pipeline checks correlate to the current commit/tag, not any historical success.
 All required steps fail closed. Admission tests use **server-side Pod dry-runs**:
 policy-controller versions that only validate Pods are covered without leaving
-rejected test Deployments behind. An unrelated RBAC error, image lookup failure or
+rejected test Deployments behind. The controller requires digest references, so
+the MR test uses its build TaskRun digest and the unsigned nginx fixture is
+resolved with `oc image info` before testing. To avoid external registry tag
+resolution, supply `module2_unsigned_image=repository@sha256:<64-hex-digest>` for
+a known unsigned fixture; malformed/tagged inputs fail before admission. An unrelated RBAC error, image lookup failure or
 webhook timeout is not accepted as a successful negative test.
 
 ### Side effects and cleanup
@@ -111,11 +124,16 @@ yamllint -c qa-automation/.yamllint qa-automation/
 ansible-playbook --syntax-check -i localhost, qa-automation/healthcheck.yml
 ansible-playbook --syntax-check -i localhost, qa-automation/e2e.yml
 ansible-playbook -i localhost, qa-automation/tests/regression.yml
+ansible-playbook -i localhost, qa-automation/tests/startup.yml
 ```
 
 The offline regression playbook invokes the same pipeline/admission assertion
 helpers as E2E. It covers current versus stale builds, missing/ambiguous pipeline
 results, expected failures, approved-image acceptance, policy-specific rejection,
-and false positives caused by authorization errors and webhook failures. Expected
+and false positives caused by authorization errors and webhook failures. It also
+checks immutable image inputs and refuses old/unready preprod images. The startup
+regressions test the bounded production exception and prove preprod, missing
+credentials, storage drift, unrelated failures and stale revision errors still
+fail. Expected
 negative assertions appear as rescued tasks; the final recap must have `failed=0`.
 Offline tests do not replace running the workflow on a fresh provisioned tenant.

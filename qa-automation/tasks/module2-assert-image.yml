@@ -1,0 +1,8 @@
+---
+- name: Require an immutable image for policy-specific admission tests
+  ansible.builtin.assert:
+    that:
+      - _m2_admission_image is match('^[^\s]+@sha256:[0-9a-f]{64}$')
+    fail_msg: >-
+      Admission policy tests require repository@sha256:digest. A tagged image is
+      rejected by digest validation before signature or approval policies run.
