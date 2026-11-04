@@ -18,6 +18,7 @@
         _m2_build_results: {IMAGE_DIGEST: "{{ 'sha256:' ~ ('a' * 64) }}"}
         _m2_preprod_pods: "{{ qa_case.pods | default({'resources': []}) }}"
         _m1_stats: "{{ qa_case.stats | default({}) }}"
+        _m2_ec_report: "{{ qa_case.conforma | default({}) }}"
   rescue:
     - name: Record expected assertion failures
       ansible.builtin.set_fact:

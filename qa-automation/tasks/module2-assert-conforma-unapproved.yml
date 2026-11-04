@@ -1,0 +1,38 @@
+---
+# Current Conforma reports use violation.metadata.code; older reports may expose
+# violation.code. Never infer success from prose or silently drop unknown rules.
+- name: Collect Conforma violations without treating warnings as failures
+  ansible.builtin.set_fact:
+    _m2_ec_violations: "{{ _m2_ec_report.components | default([]) | map(attribute='violations', default=[]) | flatten }}"
+
+- name: Normalize current and legacy Conforma rule identifiers
+  ansible.builtin.set_fact:
+    _m2_ec_violation_codes_json: >-
+      {% set codes = [] %}
+      {% for violation in _m2_ec_violations %}
+      {% set nested = violation.metadata.code | default(none) %}
+      {% set legacy = violation.code | default(none) %}
+      {% if nested is not none and legacy is not none and nested != legacy %}
+      {% set code = 'AMBIGUOUS_RULE_CODE' %}
+      {% else %}
+      {% set code = nested if nested is not none else legacy if legacy is not none else 'UNKNOWN_RULE_CODE' %}
+      {% endif %}
+      {% set _ = codes.append(code) %}
+      {% endfor %}
+      {{ codes | to_json }}
+
+- name: Decode normalized Conforma rule identifiers
+  ansible.builtin.set_fact:
+    _m2_ec_violation_codes: "{{ _m2_ec_violation_codes_json | from_json }}"
+
+- name: Require missing approval to be the only Conforma violation
+  ansible.builtin.assert:
+    that:
+      - _m2_ec_report.success is defined
+      - not (_m2_ec_report.success | bool)
+      - _m2_ec_violations | length > 0
+      - _m2_ec_violation_codes | length == _m2_ec_violations | length
+      - _m2_ec_violation_codes | difference(['release_approval.approval_present']) | length == 0
+    fail_msg: >-
+      Promotion must fail only for missing approval, not another security gate or an unknown rule.
+      Observed Conforma violation codes: {{ _m2_ec_violation_codes }}
