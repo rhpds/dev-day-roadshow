@@ -119,6 +119,13 @@ spec:
               # "trusted-artifact-signer" as the audience.
               echo "Patching Chains InstallerSets..."
 
+              echo "Waiting for Chains InstallerSets to be created..."
+              until oc get tektoninstallersets --no-headers | grep "^chain-" | grep -v "config\|secret" | grep -q .; do
+                echo "  Chains InstallerSets not ready yet, waiting..."
+                sleep 10
+              done
+              echo "Chains InstallerSets available."
+
               # Patch the Deployment InstallerSet: OIDC audience
               CHAIN_IS=$(oc get tektoninstallersets --no-headers | grep "^chain-" | grep -v "config\|secret" | awk '{print $1}')
               if [ -n "${CHAIN_IS}" ]; then

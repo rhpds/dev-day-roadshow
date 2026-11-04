@@ -1,4 +1,34 @@
 ---
+# Dev Spaces includes gitsign but not necessarily cosign. Fetch the same client
+# served to pipeline tasks by this cluster's RHTAS installation, not a new
+# external release or an unverified substitute. No credentials enter this step.
+- name: Prepare the cluster signing tools in the development image
+  ansible.builtin.command:
+    argv: [oc, exec, -i, "{{ _m2_id }}", -n, "{{ _m2_build }}", --, bash, -se]
+    stdin: |
+      set -euo pipefail
+      command -v git >/dev/null
+      command -v gitsign >/dev/null
+      mkdir -p /tmp/qa-bin
+      if ! command -v cosign >/dev/null && [ ! -x /tmp/qa-bin/cosign ]; then
+        curl --fail --silent --show-error --location \
+          http://cli-server.trusted-artifact-signer.svc:8080/clients/linux/cosign-amd64.gz \
+          | gzip -d > /tmp/qa-bin/cosign
+        chmod 700 /tmp/qa-bin/cosign
+        echo COSIGN_DOWNLOADED
+      fi
+      export PATH="/tmp/qa-bin:$PATH"
+      command -v cosign >/dev/null
+  register: _m2_signing_tools
+  changed_when: "'COSIGN_DOWNLOADED' in _m2_signing_tools.stdout"
+  tags: [module2_signing_tools]
+
+- name: Initialize the cluster signing trust root before requesting an identity
+  ansible.builtin.command:
+    argv: [oc, exec, "{{ _m2_id }}", -n, "{{ _m2_build }}", --, bash, -ec, 'export PATH="/tmp/qa-bin:$PATH"; cosign initialize --mirror=http://tuf.trusted-artifact-signer.svc --root=http://tuf.trusted-artifact-signer.svc/root.json']
+  changed_when: false
+  tags: [module2_signing_tools]
+
 # The public TAS client permits password grants in this workshop. Use a fresh
 # user ID token, never an admin identity or an unsigned API-created substitute.
 - name: Obtain a short-lived signing identity from Keycloak
@@ -26,20 +56,30 @@
   ansible.builtin.command:
     argv: [oc, exec, -i, "{{ _m2_id }}", -n, "{{ _m2_build }}", --, bash, -se]
     stdin: |
+      set +x
       set -euo pipefail
       umask 077
+      : > /tmp/qa-sign-command.log
+      exec 2>>/tmp/qa-sign-command.log
+      stage() { printf '%s\n' "$1" > /tmp/qa-sign-stage; }
+      stage prepare-authentication
+      export PATH="/tmp/qa-bin:$PATH"
       export GIT_TERMINAL_PROMPT=0 GIT_SSL_NO_VERIFY=true
       export GITSIGN_TOKEN_PROVIDER=filesystem GITSIGN_CREDENTIAL_CACHE=""
       export QA_GIT_TOKEN={{ _m2_gitlab_oauth.json.access_token | quote }}
       printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) printf "%s" oauth2;; *) printf "%s" "$QA_GIT_TOKEN";; esac' > /tmp/qa-askpass
       chmod 700 /tmp/qa-askpass
       export GIT_ASKPASS=/tmp/qa-askpass
+      trap 'rm -f /var/run/sigstore/cosign/oidc-token /tmp/qa-askpass' EXIT
       if [ ! -d /tmp/qa-source/.git ]; then
-        git clone {{ (_gitlab_url ~ '/' ~ _tenant_user ~ '/parasol-insurance-secured.git') | quote }} /tmp/qa-source >/dev/null 2>&1
+        stage clone-source
+        git clone {{ (_gitlab_url ~ '/' ~ _tenant_user ~ '/parasol-insurance-secured.git') | quote }} /tmp/qa-source >>/tmp/qa-sign-command.log 2>&1
       fi
       cd /tmp/qa-source
-      git fetch origin {{ _m2_id | quote }} >/dev/null 2>&1
-      git checkout -B {{ _m2_id | quote }} {{ ('origin/' ~ _m2_id) | quote }} >/dev/null 2>&1
+      stage checkout-feature-branch
+      git fetch origin {{ _m2_id | quote }} >>/tmp/qa-sign-command.log 2>&1
+      git checkout -B {{ _m2_id | quote }} {{ ('origin/' ~ _m2_id) | quote }} >>/tmp/qa-sign-command.log 2>&1
+      stage configure-signing
       git config user.name {{ _tenant_user | quote }}
       git config user.email {{ (_tenant_user ~ '@demo.redhat.com') | quote }}
       git config gpg.format x509
@@ -50,18 +90,43 @@
       git config gitsign.issuer {{ _m2_issuer | quote }}
       git config gitsign.clientID trusted-artifact-signer
       printf '%s' {{ _m2_oidc.json.id_token | quote }} > /var/run/sigstore/cosign/oidc-token
-      trap 'rm -f /var/run/sigstore/cosign/oidc-token /tmp/qa-askpass' EXIT
-      cosign initialize --mirror=http://tuf.trusted-artifact-signer.svc --root=http://tuf.trusted-artifact-signer.svc/root.json >/dev/null 2>&1
+      stage write-remediated-files
       {% for file in _m2_files %}
       printf '%s' {{ (file.content | b64encode) | quote }} | base64 -d > {{ file.path | quote }}
       {% endfor %}
+      stage gitsign-commit
       git add .
-      git commit -m {{ _m2_commit_message | quote }} >/dev/null 2>&1
-      gitsign verify --certificate-identity={{ (_tenant_user ~ '@demo.redhat.com') | quote }} --certificate-oidc-issuer={{ _m2_issuer | quote }} HEAD >/dev/null 2>&1
-      git push origin {{ _m2_id | quote }} >/dev/null 2>&1
+      git commit -m {{ _m2_commit_message | quote }} >>/tmp/qa-sign-command.log 2>&1
+      stage verify-signature
+      gitsign verify --certificate-identity={{ (_tenant_user ~ '@demo.redhat.com') | quote }} --certificate-oidc-issuer={{ _m2_issuer | quote }} HEAD >>/tmp/qa-sign-command.log 2>&1
+      stage push-signed-commit
+      git push origin {{ _m2_id | quote }} >>/tmp/qa-sign-command.log 2>&1
+      stage completed
       git rev-parse HEAD
   register: _m2_signed_commit
+  failed_when: false
   no_log: true
+
+- name: Capture the failed signing stage without printing credentials
+  ansible.builtin.command:
+    argv: [oc, exec, "{{ _m2_id }}", -n, "{{ _m2_build }}", --, bash, -c, 'printf "Stage: "; cat /tmp/qa-sign-stage 2>/dev/null || true; tail -n 25 /tmp/qa-sign-command.log 2>/dev/null || true']
+  register: _m2_sign_diagnostic
+  when: _m2_signed_commit.rc != 0
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Require successful signing and report a redacted diagnostic on failure
+  ansible.builtin.assert:
+    that:
+      - _m2_signed_commit.rc == 0
+    fail_msg: >-
+      Keyless signing failed (exit {{ _m2_signed_commit.rc }}).
+      {{ _m2_sign_diagnostic.stdout | default('No diagnostic available')
+         | replace(_m2_gitlab_oauth.json.access_token, '[REDACTED_GIT_TOKEN]')
+         | replace(_m2_oidc.json.id_token, '[REDACTED_ID_TOKEN]')
+         | replace(_tenant_password, '[REDACTED_PASSWORD]')
+         | regex_replace('eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', '[REDACTED_JWT]') }}
 
 - name: Store signed commit SHA
   ansible.builtin.set_fact:
