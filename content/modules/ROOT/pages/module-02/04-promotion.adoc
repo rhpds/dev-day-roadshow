@@ -77,6 +77,8 @@ This triggers the **post-merge build pipeline** -- the **__final image__** is bu
 +
 image::m02-rhdh-post-merge-pipeline.png[Post-merge build pipeline in Developer Hub,link=self,window=blank,width=700]
 
+. Wait for the post-merge build pipeline to complete before proceeding. Return to the **Parasol Insurance (Secured)** component in Developer Hub and click the **CI** tab to watch the pipeline finish (this typically takes 3-5 minutes). If this is the first time the image is being built, the tag-promote step in the next section could fail without a completed build.
+
 '''
 
 [#section-2]
