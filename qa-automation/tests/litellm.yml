@@ -1,0 +1,141 @@
+---
+# Offline tests of the exact helpers; no network, credentials or live changes.
+- name: LiteLLM tool-calling assertion regressions
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    _lc_module: offline
+    _lc_model: fixture-model
+    _lc_namespace: user-example-dev
+    _lc_expected_pod: parasol-db-fixture
+    _lc_rpc_method: tools/list
+    _tenant_user: user-example
+    _llm_valid_first:
+      status: 200
+      json:
+        choices:
+          - message:
+              tool_calls:
+                - id: call-fixture
+                  type: function
+                  function:
+                    name: pods_list_in_namespace
+                    arguments: '{"namespace":"user-example-dev"}'
+        usage: {total_tokens: 11}
+    _llm_valid_final:
+      status: 200
+      json:
+        choices:
+          - message: {content: 'Live Pod parasol-db-fixture is running.'}
+        usage: {total_tokens: 13}
+  tasks:
+    - name: Test fail-closed selection, scope, execution evidence, output and usage
+      ansible.builtin.include_tasks: litellm-case.yml
+      loop:
+        - {name: valid-structured-selection, helper: ../tasks/litellm-assert-selection.yml}
+        - name: unauthorized-key-is-not-a-pass
+          helper: ../tasks/litellm-assert-selection.yml
+          first: {status: 401, json: {error: {code: invalid_api_key}}}
+          must_fail: true
+        - name: rate-limit-is-not-normal-inference-success
+          helper: ../tasks/litellm-assert-selection.yml
+          first: {status: 429, json: {error: {code: rate_limit_exceeded}}}
+          must_fail: true
+        - name: plausible-text-is-not-a-tool-call
+          helper: ../tasks/litellm-assert-selection.yml
+          first: {status: 200, json: {choices: [{message: {content: 'There are two Pods.'}}]}}
+          must_fail: true
+        - name: empty-response-is-not-a-pass
+          helper: ../tasks/litellm-assert-selection.yml
+          first: {status: 200, json: {choices: []}}
+          must_fail: true
+        - name: other-namespace-is-never-executed
+          helper: ../tasks/litellm-assert-selection.yml
+          first:
+            status: 200
+            json:
+              choices:
+                - message:
+                    tool_calls:
+                      - id: wrong-namespace
+                        type: function
+                        function: {name: pods_list_in_namespace, arguments: '{"namespace":"other-user-dev"}'}
+          must_fail: true
+        - name: mutation-tool-is-never-executed
+          helper: ../tasks/litellm-assert-selection.yml
+          first:
+            status: 200
+            json:
+              choices:
+                - message:
+                    tool_calls:
+                      - id: wrong-tool
+                        type: function
+                        function: {name: pods_delete, arguments: '{"namespace":"user-example-dev"}'}
+          must_fail: true
+        - {name: real-tool-evidence-passes, helper: ../tasks/litellm-assert-tool-result.yml}
+        - name: fabricated-tool-result-is-not-a-pass
+          helper: ../tasks/litellm-assert-tool-result.yml
+          tool_text: invented-pod
+          must_fail: true
+        - name: mcp-error-is-not-a-pass
+          helper: ../tasks/litellm-assert-tool-result.yml
+          rpc: {result: {isError: true}}
+          must_fail: true
+        - {name: grounded-final-and-usage-pass, helper: ../tasks/litellm-assert-final.yml}
+        - name: ungrounded-final-is-not-a-pass
+          helper: ../tasks/litellm-assert-final.yml
+          final: {status: 200, json: {choices: [{message: {content: 'I guess Pods are healthy.'}}], usage: {total_tokens: 13}}}
+          must_fail: true
+        - name: missing-token-usage-is-not-accounted
+          helper: ../tasks/litellm-assert-final.yml
+          final: {status: 200, json: {choices: [{message: {content: 'parasol-db-fixture'}}]}}
+          must_fail: true
+        - name: plain-inference-auth-error-is-a-failure
+          helper: ../tasks/litellm-report-calls.yml
+          calls: [{status: 401, json: {error: {code: invalid_api_key}}}]
+          must_fail: true
+        - name: plain-inference-empty-answer-is-a-failure
+          helper: ../tasks/litellm-report-calls.yml
+          calls: [{status: 200, json: {choices: [{message: {content: ''}}], usage: {total_tokens: 12}}}]
+          must_fail: true
+        - name: plain-inference-missing-usage-is-a-failure
+          helper: ../tasks/litellm-report-calls.yml
+          calls: [{status: 200, json: {choices: [{message: {content: answer}}]}}]
+          must_fail: true
+        - name: mcp-json-response
+          helper: ../tasks/litellm-decode-mcp.yml
+          rpc_result: {status: 200, json: {result: {tools: []}}}
+        - name: mcp-sse-response
+          helper: ../tasks/litellm-decode-mcp.yml
+          rpc_result:
+            status: 200
+            content: "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[]}}\n\n"
+        - name: protocol-error-is-not-a-pass
+          helper: ../tasks/litellm-decode-mcp.yml
+          rpc_result: {status: 200, json: {error: {message: forbidden}}}
+          must_fail: true
+      loop_control:
+        loop_var: llm_case
+        label: "{{ llm_case.name }}"
+
+    - name: Sanitize plain inference responses before reporting
+      ansible.builtin.include_tasks: ../tasks/litellm-report-calls.yml
+      vars:
+        litellm_check_module: offline
+        litellm_check_model: fixture-model
+        litellm_check_calls:
+          - status: 200
+            json:
+              id: fixture-id
+              model: fixture-model
+              choices: [{message: {content: valid-response}}]
+              usage: {total_tokens: 24, prompt_tokens: 11, completion_tokens: 13}
+            invocation: {module_args: {headers: {Authorization: DO_NOT_PRINT_TEST_VALUE}}}
+
+    - name: Ensure authorization headers never enter the public summary
+      ansible.builtin.assert:
+        that:
+          - "'DO_NOT_PRINT_TEST_VALUE' not in (_lc_plain_report | to_json)"
+          - _lc_plain_report[0].total_tokens == 24

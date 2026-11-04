@@ -146,6 +146,14 @@
           {% endfor %}
       when: e2e_failures | length > 0
 
+    # This is a tenant-key model/tool compatibility gate using a real read-only
+    # MCP fixture; the Camel application's own business flows are separate.
+    - name: "LiteLLM check [Module 3]: Camel agent model and tool compatibility"
+      ansible.builtin.include_tasks: tasks/litellm-check.yml
+      vars:
+        litellm_check_module: Module 3
+        litellm_check_model: "{{ e2e_module3_litellm_model | default('qwen3-14b') }}"
+
     # =================================================================
     # LAB M1: Service Interconnect — Skupper CRs
     # =================================================================

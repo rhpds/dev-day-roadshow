@@ -1,0 +1,200 @@
+---
+# Per-user LiteLLM/model tool-calling compatibility gate. Uses the real shared
+# OpenShift MCP Pod-list tool as a read-only fixture with student passthrough
+# authentication. This is NOT proof of an application's complete UI/business flow
+# or a TPM-limit load test. It never starts another user's tests or changes lab data.
+- name: "LiteLLM check: load optional Showroom input data privately"
+  ansible.builtin.set_fact:
+    _lc_user_data: "{{ lookup('ansible.builtin.file', '/user_data/user_data.yml', errors='ignore') | default('{}', true) | from_yaml }}"
+  no_log: true
+
+- name: "LiteLLM check: normalize this user's credentials and model inputs"
+  ansible.builtin.set_fact:
+    _lc_module: "{{ litellm_check_module | default('E2E') }}"
+    _lc_model: "{{ litellm_check_model }}"
+    _lc_user: "{{ tenant_user | default(user | default(_lc_user_data.user | default(''))) }}"
+    _lc_api: "{{ ocp_api_url | default(openshift_api_url | default(_lc_user_data.openshift_api_url | default(''))) }}"
+    _lc_password: "{{ password | default(_lc_user_data.password | default('')) }}"
+    _lc_key: "{{ litellm_virtual_key | default(_lc_user_data.litellm_virtual_key | default('')) }}"
+    _lc_llm: "{{ (litellm_api_endpoint | default(_lc_user_data.litellm_api_endpoint | default(''))) | regex_replace('/$', '') }}"
+    _lc_url: "{{ litellm_check_mcp_url | default('http://openshift-mcp-server.openshift-mcp.svc.cluster.local:8080/mcp') }}"
+    _lc_run: "litellm-check-{{ lookup('ansible.builtin.password', '/dev/null', length=8, chars=['ascii_lowercase', 'digits']) }}"
+    _lc_results: []
+    _lc_first: {}
+    _lc_final: {}
+    _lc_token: {}
+    _lc_kubeconfig: {}
+    _lc_started_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+  no_log: true
+
+- name: "LiteLLM check [{{ _lc_module }}]: require this tenant's real inputs"
+  ansible.builtin.assert:
+    that:
+      - _lc_user is match('^[a-z0-9][a-z0-9-]*$')
+      - _lc_api is match('^https://')
+      - _lc_llm is match('^https://')
+      - _lc_password | length > 0
+      - _lc_key | length > 0
+      - _lc_model is string and _lc_model | length > 0
+    fail_msg: LiteLLM check requires tenant user/password, OpenShift API, LiteLLM endpoint/key and the module model.
+
+- name: "LiteLLM check [{{ _lc_module }}]: prepare the tenant-scoped read fixture"
+  ansible.builtin.set_fact:
+    _lc_namespace: "{{ _lc_user }}-dev"
+
+- name: "LiteLLM check [{{ _lc_module }}]: real inference and MCP tool round trip"
+  module_defaults:
+    ansible.builtin.uri:
+      validate_certs: "{{ qa_validate_certs | default(false) | bool }}"
+      timeout: 90
+      return_content: true
+  block:
+    - name: "LiteLLM check [{{ _lc_module }}]: create an isolated student kubeconfig"
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .litellm-tool-check
+      register: _lc_kubeconfig
+
+    - name: "LiteLLM check [{{ _lc_module }}]: authenticate the actual student"
+      ansible.builtin.command:
+        argv:
+          - oc
+          - login
+          - "{{ _lc_api }}"
+          - --username
+          - "{{ _lc_user }}"
+          - --password
+          - "{{ _lc_password }}"
+          - "--kubeconfig={{ _lc_kubeconfig.path }}"
+          - "--insecure-skip-tls-verify={{ (not (qa_validate_certs | default(false) | bool)) | string | lower }}"
+      register: _lc_login
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: "LiteLLM check [{{ _lc_module }}]: require student authentication"
+      ansible.builtin.assert:
+        that: [_lc_login.rc == 0]
+        fail_msg: "Student authentication failed: {{ _lc_login.stderr | default('') | replace(_lc_password, '[REDACTED]') }}"
+
+    - name: "LiteLLM check [{{ _lc_module }}]: obtain the probe-only student API token"
+      ansible.builtin.command:
+        argv: [oc, whoami, -t, "--kubeconfig={{ _lc_kubeconfig.path }}"]
+      register: _lc_token
+      changed_when: false
+      no_log: true
+
+    - name: "LiteLLM check [{{ _lc_module }}]: establish independent live Pod evidence"
+      ansible.builtin.command:
+        argv: [oc, get, pods, -n, "{{ _lc_namespace }}", -o, json, "--kubeconfig={{ _lc_kubeconfig.path }}", --request-timeout=20s]
+      register: _lc_pods
+      changed_when: false
+      no_log: true
+
+    - name: "LiteLLM check [{{ _lc_module }}]: select the existing database Pod"
+      ansible.builtin.set_fact:
+        _lc_expected_pod: "{{ ((_lc_pods.stdout | from_json)['items'] | selectattr('metadata.name', 'match', '^parasol-db-') | first).metadata.name }}"
+
+    - name: "LiteLLM check [{{ _lc_module }}]: initialize the real MCP server"
+      ansible.builtin.uri:
+        url: "{{ _lc_url }}"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _lc_token.stdout | trim }}"
+          Accept: application/json, text/event-stream
+        body_format: json
+        body:
+          jsonrpc: '2.0'
+          id: 1
+          method: initialize
+          params:
+            protocolVersion: '2025-03-26'
+            capabilities: {}
+            clientInfo: {name: e2e-litellm-check, version: '1.0'}
+        status_code: 200
+      register: _lc_rpc_result
+      failed_when: false
+      no_log: true
+
+    - name: "LiteLLM check [{{ _lc_module }}]: decode MCP initialization"
+      ansible.builtin.include_tasks: litellm-decode-mcp.yml
+      vars: {_lc_rpc_method: initialize}
+
+    - name: "LiteLLM check [{{ _lc_module }}]: set negotiated MCP headers"
+      ansible.builtin.set_fact:
+        _lc_headers: >-
+          {{ {'Authorization': 'Bearer ' ~ (_lc_token.stdout | trim),
+              'Accept': 'application/json, text/event-stream',
+              'MCP-Protocol-Version': _lc_rpc.result.protocolVersion}
+             | combine({'Mcp-Session-Id': _lc_rpc_result.mcp_session_id}
+               if _lc_rpc_result.mcp_session_id is defined else {}) }}
+      no_log: true
+
+    - name: "LiteLLM check [{{ _lc_module }}]: notify initialized session"
+      ansible.builtin.uri:
+        url: "{{ _lc_url }}"
+        method: POST
+        headers: "{{ _lc_headers }}"
+        body_format: json
+        body: {jsonrpc: '2.0', method: notifications/initialized}
+        status_code: [200, 202, 204]
+      no_log: true
+
+    - name: "LiteLLM check [{{ _lc_module }}]: discover actual MCP tools"
+      ansible.builtin.uri:
+        url: "{{ _lc_url }}"
+        method: POST
+        headers: "{{ _lc_headers }}"
+        body_format: json
+        body: {jsonrpc: '2.0', id: 2, method: tools/list}
+        status_code: 200
+      register: _lc_rpc_result
+      failed_when: false
+      no_log: true
+
+    - name: "LiteLLM check [{{ _lc_module }}]: decode MCP tool discovery"
+      ansible.builtin.include_tasks: litellm-decode-mcp.yml
+      vars: {_lc_rpc_method: tools/list}
+
+    - name: "LiteLLM check [{{ _lc_module }}]: require the real namespaced read tool"
+      ansible.builtin.assert:
+        that:
+          - _lc_rpc.result.tools | selectattr('name', 'equalto', 'pods_list_in_namespace') | list | length == 1
+        fail_msg: "MCP pods_list_in_namespace is required. Available tools: {{ _lc_rpc.result.tools | map(attribute='name') | list }}"
+
+    - name: "LiteLLM check [{{ _lc_module }}]: expose only the permitted read tool"
+      ansible.builtin.set_fact:
+        _lc_tool: "{{ _lc_rpc.result.tools | selectattr('name', 'equalto', 'pods_list_in_namespace') | first }}"
+        _lc_messages:
+          - role: system
+            content: Use the provided read-only tool to get live information. Do not invent Pod names. Call it once, then report the exact names returned.
+          - role: user
+            content: "List all Pods in namespace {{ _lc_namespace }}. Use the provided tool now; do not guess or explain before calling it."
+
+    - name: "LiteLLM check [{{ _lc_module }}]: validate the complete round trip"
+      ansible.builtin.include_tasks: litellm-tool-roundtrip.yml
+
+    - name: "LiteLLM check [{{ _lc_module }}]: PASS with real token accounting"
+      ansible.builtin.debug:
+        msg: >-
+          {{ {'check': 'LiteLLM check', 'result': 'PASS', 'module': _lc_module,
+              'user': _lc_user, 'run_id': _lc_run, 'started_at': _lc_started_at,
+              'ended_at': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ'),
+              'evidence': _lc_results,
+              'scope': 'Tenant-key model/tool compatibility with a real read-only MCP fixture; not full application acceptance or a TPM limit benchmark.'} }}
+  always:
+    - name: "LiteLLM check [{{ _lc_module }}]: revoke only the check's student token"
+      ansible.builtin.command:
+        argv: [oc, logout, "--kubeconfig={{ _lc_kubeconfig.path }}"]
+      when:
+        - _lc_token.stdout is defined
+        - _lc_kubeconfig.path is defined
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: "LiteLLM check [{{ _lc_module }}]: remove the isolated kubeconfig"
+      ansible.builtin.file:
+        path: "{{ _lc_kubeconfig.path }}"
+        state: absent
+      when: _lc_kubeconfig.path is defined
