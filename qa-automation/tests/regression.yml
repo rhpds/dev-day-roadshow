@@ -230,6 +230,20 @@
              | selectattr('name', 'search', 'Module 2:')
              | first).vars.module2_allow_mutations | bool
 
+    - name: Read the Module 2 admission fixture sequence
+      ansible.builtin.set_fact:
+        _m2_fixture_workflow: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../tasks/module2-workflow.yml') }}"
+
+    - name: Require post-merge pipeline provenance before approval-only admission testing
+      ansible.builtin.assert:
+        that:
+          - "'Require the post-merge secured build to succeed' in _m2_fixture_workflow"
+          - "'Wait for Chains to attach post-merge provenance' in _m2_fixture_workflow"
+          - _m2_fixture_workflow.find('Require the post-merge secured build to succeed') < _m2_fixture_workflow.find('Reject the signed but unapproved post-merge image for approval only')
+          - _m2_fixture_workflow.find('Wait for Chains to attach post-merge provenance') < _m2_fixture_workflow.find('Reject the signed but unapproved post-merge image for approval only')
+          - _m2_fixture_workflow.find('Reject the signed but unapproved post-merge image for approval only') < _m2_fixture_workflow.find('Submit a real signed release approval')
+          - "'_m2_mr_image' not in _m2_fixture_workflow"
+
     - name: Supply an unsafe Backstage template as returned by the GitLab API
       ansible.builtin.set_fact:
         _m2_template_open: !unsafe '${{'
