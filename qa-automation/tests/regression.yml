@@ -135,7 +135,7 @@
     - name: Verify Backstage variables were replaced without evaluating them as Ansible
       ansible.builtin.assert:
         that:
-          - _m2_template_actions[0].content == 'name: test-user-e2e-example'
+          - "_m2_template_actions[0].content == 'name: test-user-e2e-example'"
           - _m2_template_actions[0].file_path == 'helm/Chart.yaml'
 
     - name: Progressing is an expected readiness state, not an automatic failure
