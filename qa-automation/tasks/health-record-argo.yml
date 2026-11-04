@@ -1,15 +1,51 @@
 ---
-- name: Record unhealthy ArgoCD apps
+- name: Classify application health using only safe status metadata
+  ansible.builtin.set_fact:
+    _qa_argo_report_json: >-
+      {% set report = [] %}
+      {% for lookup in r_argo_checks.results %}
+      {% set resources = lookup.resources | default([]) %}
+      {% if resources | length != 1 %}
+      {% set state = 'FAIL' %}
+      {% set reason = 'Application is missing or unreadable.' %}
+      {% set failure = 'ArgoCD app ' ~ lookup.item ~ ' is missing or unreadable' %}
+      {% else %}
+      {% set health = resources[0].status.health.status | default('Unknown') %}
+      {% set sync = resources[0].status.sync.status | default('Unknown') %}
+      {% set failure = 'ArgoCD app ' ~ lookup.item ~ ' is ' ~ sync ~ '/' ~ health %}
+      {% if lookup.item == _tenant_user ~ '-secured-prod' and _m2_prod_release_pending | default(false) | bool %}
+      {% set state = 'EXPECTED' %}
+      {% set reason = 'Awaiting first digest promotion: only the initial :1.0 Deployment was rejected. No production startup failure is expected.' %}
+      {% elif health == 'Progressing' %}
+      {% set state = 'EXPECTED' %}
+      {% set reason = sync ~ '/Progressing: application is reconciling; this starting state is allowed.' %}
+      {% elif health == 'Healthy' %}
+      {% set state = 'PASS' if sync == 'Synced' else 'WARN' %}
+      {% set reason = 'Synced/Healthy; no unhealthy-application failure is expected.' if sync == 'Synced'
+         else sync ~ '/Healthy: readiness passes, but inspect sync drift or shared-resource ownership.' %}
+      {% else %}
+      {% set state = 'FAIL' %}
+      {% set reason = sync ~ '/' ~ health ~ ': unexpected application health; this is not an allowed startup gate.' %}
+      {% endif %}
+      {% endif %}
+      {% set _ = report.append({'check': lookup.item, 'state': state, 'reason': reason, 'failure': failure}) %}
+      {% endfor %}
+      {{ report | to_json }}
+  no_log: true
+
+- name: Decode application status explanations
+  ansible.builtin.set_fact:
+    _qa_argo_report: "{{ _qa_argo_report_json | from_json }}"
+
+- name: Explain every application health result
+  ansible.builtin.debug:
+    msg: "{{ item.state }} — {{ item.check }}: {{ item.reason }}"
+  loop: "{{ _qa_argo_report }}"
+  loop_control:
+    label: "{{ item.check }}"
+
+- name: Record only unexpected application failures
   ansible.builtin.set_fact:
     healthcheck_failures: >-
-      {{ healthcheck_failures +
-         ['ArgoCD app ' + item.item + ' is ' +
-          (item.resources[0].status.sync.status | default('Unknown')) + '/' +
-          (item.resources[0].status.health.status | default('Unknown'))] }}
-  loop: "{{ r_argo_checks.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-  when: >-
-    item.resources | length == 0
-    or (item.resources[0].status.health.status | default('') not in ['Healthy', 'Progressing']
-    and not (item.item == _tenant_user ~ '-secured-prod' and _m2_prod_release_pending | default(false) | bool))
+      {{ healthcheck_failures + (_qa_argo_report
+         | selectattr('state', 'equalto', 'FAIL') | map(attribute='failure') | list) }}

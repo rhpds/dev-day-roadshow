@@ -4,6 +4,10 @@ The playbooks run locally in the Showroom automation runner or with
 `ansible-playbook`. They require `kubernetes.core`, the Kubernetes Python client
 used by that collection, and `oc`. Module 2 is implemented entirely in Ansible;
 its Git/signing commands run in the existing secured development-tooling image.
+The image includes gitsign but may omit cosign; E2E fetches the matching cosign
+client from the cluster TAS CLI service and initializes trust before requesting
+an identity. Tool-bootstrap errors are visible without credentials; later signing
+failures report their command stage with known tokens/passwords redacted.
 There is no separate Python test runner.
 
 ## Healthcheck
@@ -18,7 +22,11 @@ its existing user data and runtime-automation service account.
 The healthcheck checks the base tenant and Module 2 namespaces, applications,
 pipeline/task definitions, credential secrets, Maven cache PVC, application/route
 definitions, production admission opt-in, signing policies and shared security
-services. Missing routes are failures, not skipped HTTP tests.
+services. Missing routes are failures, not skipped HTTP tests. Module 2 prerequisite,
+application and shared-service checks explain each result as `PASS`, `EXPECTED`,
+`WARN` or `FAIL`, including why no failure needs recording. Secret lookup values
+remain censored; the following metadata-only report shows the resource name and
+reason without revealing credentials.
 
 **Readiness is not exercise completion.** ArgoCD `Progressing` remains allowed.
 `OutOfSync` is reported separately as a warning: shared Dev Spaces ownership can
@@ -68,11 +76,14 @@ and removes it in `always`, including after failures.
    `UNSIGNED`, while the enforced MR must fail specifically at signature
    verification and GitLab must refuse the merge.
 5. Push a genuinely signed correction, require the MR signature and build checks
-   to pass, wait for Chains signing, then test unsigned and signed-but-unapproved
-   image rejection using **immutable digests**, not image tags.
+   to pass, wait for Chains processing, and test unsigned-image rejection using
+   an **immutable digest**, not an image tag.
 6. Merge the signed source MR, verify the post-merge signature/ACS results and
-   immutable image digest, wait for Chains provenance, and require a ready preprod
-   application container running that exact digest before creating a release tag.
+   exported immutable image digest, wait for Chains provenance, and require a
+   ready preprod application container running that exact digest. Test this signed
+   but unapproved image: **only** release approval may fail. The MR pipeline does
+   not export pipeline-level image outputs, so its build TaskRun image is not
+   used as the whole-pipeline signed-commit provenance fixture. No policy is relaxed.
 7. Create a release tag and require Conforma to reject it before approval.
 8. Submit a **real signed release approval** through the approval application's
    API using the student's identity. Create another release tag; require successful
@@ -125,6 +136,42 @@ registration and IDE navigation remain manual. Modules 3, 4 and 5 still have
 separately identified coverage gaps; reaching them is not evidence that their
 existing load simulations validate every exercise outcome.
 
+## Per-user LiteLLM checks
+
+Modules 1, 3, 4 and 5 have explicit **LiteLLM check** stages. Module 2 has no
+inference workflow and does not add an artificial call.
+
+| Module | Model checked by default |
+|---|---|
+| 1 — coding assistant | `qwen3-235b` |
+| 3 — Camel agent | `qwen3-14b` |
+| 4 — troubleshooting | Current `OLSConfig.spec.ols.defaultModel` |
+| 5 — MTA | `qwen3-235b` |
+
+Override the applicable `e2e_module<N>_litellm_model` only when the lab's model
+configuration changes. Every check uses **that tenant's virtual key** and an
+isolated student OpenShift login. It exposes only the actual OpenShift MCP
+`pods_list_in_namespace` read tool, validates the selected function/namespace,
+executes it and verifies a known live Pod, then feeds the real tool result back
+to the model and requires a grounded final answer. Wrong namespaces, invented
+text, API errors and missing token accounting fail E2E. The check never loops
+through other users, changes lab workloads, or modifies the caller's kubeconfig.
+
+This is a **model/tool compatibility fixture**, not acceptance of Camel's
+Node.js/Java business tools, the coding IDE, MTA patch application, or the
+Lightspeed service/UI/shared-key path. Module 4 checks the configured model's
+tenant-key route; the service's own credential path is separate. Module 5's
+existing inference prompts also now have fail-closed response/usage validation.
+
+Safe summaries include module, user, request IDs, timestamps, actual tokens from
+both inference rounds and latency. Direct prompt checks report their usage too.
+These are per-check observations for correlation with LiteLLM logs. They are not
+a 60-second load benchmark or proof of configured TPM limits. Concurrent per-user
+E2E runs generate shared load; aggregate all actual inference rounds by key/model
+and time window for workshop TPM, including calls made through applications.
+
+Do not restart Showroom or retag an active test to roll out these checks.
+
 ## Offline validation (Ansible only)
 
 ```sh
@@ -133,6 +180,7 @@ ansible-playbook --syntax-check -i localhost, qa-automation/healthcheck.yml
 ansible-playbook --syntax-check -i localhost, qa-automation/e2e.yml
 ansible-playbook -i localhost, qa-automation/tests/regression.yml
 ansible-playbook -i localhost, qa-automation/tests/startup.yml
+ansible-playbook -i localhost, qa-automation/tests/litellm.yml
 ```
 
 The offline regression playbook invokes the same pipeline/admission assertion

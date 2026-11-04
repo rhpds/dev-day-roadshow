@@ -1,0 +1,6 @@
+---
+- name: "LiteLLM check [{{ _lc_module }}]: Require evidence of the live database Pod rather than a fabricated answer"
+  ansible.builtin.assert:
+    that:
+      - not (_lc_rpc.result.isError | default(false) | bool)
+      - _lc_expected_pod in _lc_tool_text
