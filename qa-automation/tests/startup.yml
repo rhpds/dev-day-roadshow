@@ -1,0 +1,88 @@
+---
+- name: Module 2 startup state regressions (offline, Ansible only)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    _tenant_user: user-example
+    _startup_message: 'admission webhook "policy.rhtas.com" denied the request: validation failed: invalid value: quay.apps.example/user-example/parasol-insurance-secured:1.0 must be an image digest: spec.template.spec.containers[0].image'
+    _startup_prod:
+      metadata: {name: user-example-secured-prod}
+      spec:
+        destination: {namespace: user-example-secured-prod}
+      status:
+        health: {status: Degraded}
+        sync: {status: OutOfSync, revision: initial-manifests}
+        conditions: [{type: SyncError, message: "{{ _startup_message }}"}]
+        resources:
+          - {kind: Service, name: parasol-insurance, namespace: user-example-secured-prod, status: Synced}
+          - {kind: Deployment, name: parasol-insurance, namespace: user-example-secured-prod, status: OutOfSync}
+        operationState:
+          phase: Failed
+          syncResult:
+            revision: initial-manifests
+            resources:
+              - {kind: Deployment, name: parasol-insurance, status: SyncFailed, message: "{{ _startup_message }}"}
+  tasks:
+    - name: Exercise bounded production startup exceptions and real failures
+      ansible.builtin.include_tasks: startup-case.yml
+      loop:
+        - name: known-initial-production-gate
+          pending: true
+          failures: 0
+        - name: expected-missing-initial-production-deployment
+          pending: true
+          failures: 0
+          prerequisites:
+            - item: {kind: Deployment, name: parasol-insurance, namespace: user-example-secured-prod}
+              resources: []
+        - name: preprod-degradation-still-fails
+          pending: true
+          preprod_health: Degraded
+          failures: 1
+        - name: missing-preprod-deployment-still-fails
+          pending: true
+          failures: 1
+          prerequisites:
+            - item: {kind: Deployment, name: parasol-insurance, namespace: user-example-preprod}
+              resources: []
+        - name: missing-credential-still-fails
+          pending: true
+          failures: 1
+          prerequisites:
+            - item: {kind: Secret, name: quay-push-secret, namespace: user-example-secured-build}
+              resources: []
+        - name: absent-production-application-is-not-a-release-gate
+          missing_app: true
+          failures: 1
+        - name: healthy-production-needs-no-exception
+          prod: "{{ _startup_prod | combine({'status': {'health': {'status': 'Healthy'}, 'sync': {'status': 'Synced'}}}, recursive=true) }}"
+          failures: 0
+        - name: progressing-production-remains-allowed
+          prod: "{{ _startup_prod | combine({'status': {'health': {'status': 'Progressing'}}}, recursive=true) }}"
+          failures: 0
+        - name: unrelated-rbac-denial-is-not-a-release-gate
+          prod: "{{ _startup_prod | combine({'status': {'operationState': {'syncResult': {'resources': [{'kind': 'Deployment', 'name': 'parasol-insurance', 'status': 'SyncFailed', 'message': 'deployments is forbidden'}]}}}}, recursive=true) }}"
+          failures: 1
+        - name: another-release-tag-is-not-the-initial-state
+          prod: "{{ _startup_prod | combine({'status': {'operationState': {'syncResult': {'resources': [{'kind': 'Deployment', 'name': 'parasol-insurance', 'status': 'SyncFailed', 'message': _startup_message | replace(':1.0 ', ':v2.0 ')}]}}}}, recursive=true) }}"
+          failures: 1
+        - name: stale-admission-error-does-not-exempt-a-new-revision
+          prod: "{{ _startup_prod | combine({'status': {'sync': {'revision': 'new-promoted-manifests'}}}, recursive=true) }}"
+          failures: 1
+        - name: extra-sync-failure-is-not-hidden
+          prod: "{{ _startup_prod | combine({'status': {'operationState': {'syncResult': {'resources': _startup_prod.status.operationState.syncResult.resources + [{'kind': 'PersistentVolumeClaim', 'name': 'parasol-db', 'status': 'SyncFailed', 'message': 'storage failure'}]}}}}, recursive=true) }}"
+          failures: 1
+        - name: extra-drift-is-not-hidden
+          prod: "{{ _startup_prod | combine({'status': {'resources': _startup_prod.status.resources + [{'kind': 'Service', 'name': 'parasol-db', 'namespace': 'user-example-secured-prod', 'status': 'OutOfSync'}]}}, recursive=true) }}"
+          failures: 1
+        - name: invalid-promoted-digest-still-fails
+          prod: "{{ _startup_prod | combine({'status': {'operationState': {'syncResult': {'resources': [{'kind': 'Deployment', 'name': 'parasol-insurance', 'status': 'SyncFailed', 'message': 'failed policy: parasol-release-approval-required'}]}}}}, recursive=true) }}"
+          prerequisites:
+            - item: {kind: Deployment, name: parasol-insurance, namespace: user-example-secured-prod}
+              resources: []
+          # One Argo failure plus the missing Deployment must both remain visible.
+          failures: 2
+      loop_control:
+        loop_var: startup_case
+        label: "{{ startup_case.name }}"

@@ -340,10 +340,11 @@
   ansible.builtin.include_tasks: module2-task.yml
   vars: {_m2_task_name: verify-commit-signature}
 
-- name: Require failure specifically at the signature gate
+- name: Require failure specifically for the known unsigned commit
   ansible.builtin.assert:
     that:
       - _m2_task.status.conditions[0].status == 'False'
+      - _m2_task_results.SIGNATURE_STATUS | default('') == 'UNSIGNED'
 
 - name: Verify GitLab refuses the failed MR merge
   ansible.builtin.uri:
@@ -389,6 +390,29 @@
     _m2_run_param: {name: commit-sha, value: "{{ _m2_sha }}"}
     _m2_expected_status: 'True'
 
+- name: Read the successful MR signature gate
+  ansible.builtin.include_tasks: module2-task.yml
+  vars: {_m2_task_name: verify-commit-signature}
+
+- name: Require the MR to verify the student signature
+  ansible.builtin.assert:
+    that:
+      - _m2_task.status.conditions[0].status == 'True'
+      - _m2_task_results.SIGNATURE_STATUS | default('') == 'SIGNED'
+
+- name: Read the MR build's immutable image digest
+  ansible.builtin.include_tasks: module2-task.yml
+  vars: {_m2_task_name: build-and-push}
+
+- name: Require a valid digest from the correlated MR build
+  ansible.builtin.assert:
+    that:
+      - _m2_task_results.IMAGE_DIGEST | default('') is match('^sha256:[0-9a-f]{64}$')
+
+- name: Save the signed but unapproved MR image by digest
+  ansible.builtin.set_fact:
+    _m2_mr_image: "{{ _m2_image }}@{{ _m2_task_results.IMAGE_DIGEST }}"
+
 - name: Wait for Chains to sign the MR image
   kubernetes.core.k8s_info:
     api_version: tekton.dev/v1
@@ -400,17 +424,30 @@
   retries: 30
   delay: 10
 
+- name: Resolve the unsigned test image to a digest without creating a workload
+  ansible.builtin.command:
+    argv: [oc, image, info, docker.io/library/nginx:latest, --filter-by-os=linux/amd64, --output=json]
+  register: _m2_unsigned_image_info
+  changed_when: false
+  when: module2_unsigned_image is not defined
+
+- name: Set the immutable unsigned image fixture
+  ansible.builtin.set_fact:
+    _m2_unsigned_image: >-
+      {{ module2_unsigned_image | default('docker.io/library/nginx@' ~
+         ((_m2_unsigned_image_info.stdout | default('{}') | from_json).digest | default(''))) }}
+
 - name: Reject an unsigned image at admission
   ansible.builtin.include_tasks: module2-admission.yml
   vars:
-    _m2_admission_image: docker.io/library/nginx:latest
+    _m2_admission_image: "{{ _m2_unsigned_image }}"
     _m2_required_policies: [parasol-image-signature-required, parasol-signed-commit-required, parasol-release-approval-required]
     _m2_forbidden_policies: []
 
 - name: Reject a signed but unapproved MR image for approval only
   ansible.builtin.include_tasks: module2-admission.yml
   vars:
-    _m2_admission_image: "{{ _m2_image }}:mr-{{ _m2_good_mr.json.iid }}"
+    _m2_admission_image: "{{ _m2_mr_image }}"
     _m2_required_policies: [parasol-release-approval-required]
     _m2_forbidden_policies: [parasol-image-signature-required, parasol-signed-commit-required]
 
@@ -475,6 +512,31 @@
   until: _m2_chains.resources[0].metadata.annotations['chains.tekton.dev/signed'] | default('') == 'true'
   retries: 30
   delay: 10
+
+# The post-merge rollout must actually consume the new image before tagging.
+# Preprod tracks :latest, so compare the running container's immutable imageID,
+# not the tag in its Deployment spec or merely the status of an earlier build.
+- name: Wait for the current build image to be ready in preprod
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ _tenant_user }}-preprod"
+    label_selectors: [app=parasol-insurance]
+  register: _m2_preprod_pods
+  until: >-
+    _m2_preprod_pods.resources
+    | selectattr('status.containerStatuses', 'defined')
+    | map(attribute='status.containerStatuses') | flatten
+    | selectattr('name', 'equalto', 'parasol-insurance')
+    | selectattr('ready', 'defined') | selectattr('ready', 'equalto', true)
+    | selectattr('imageID', 'defined')
+    | selectattr('imageID', 'search', '(^|@)' ~ _m2_build_results.IMAGE_DIGEST ~ '$')
+    | list | length > 0
+  retries: 60
+  delay: 10
+
+- name: Assert the preprod release prerequisite
+  ansible.builtin.include_tasks: module2-assert-preprod.yml
 
 - name: Create the first release tag without approval
   ansible.builtin.uri:

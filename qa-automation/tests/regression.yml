@@ -118,6 +118,59 @@
         loop_var: qa_case
         label: "{{ qa_case.name }}"
 
+    - name: Test immutable admission inputs and exact preprod rollout checks
+      ansible.builtin.include_tasks: case.yml
+      loop:
+        - name: immutable-admission-input
+          helper: ../tasks/module2-assert-image.yml
+          image: "{{ 'registry.example/test@sha256:' ~ ('a' * 64) }}"
+        - name: tagged-admission-input-is-rejected-before-testing
+          helper: ../tasks/module2-assert-image.yml
+          image: registry.example/test:latest
+          must_fail: true
+        - name: malformed-digest-is-rejected
+          helper: ../tasks/module2-assert-image.yml
+          image: registry.example/test@sha256:short
+          must_fail: true
+        - name: preprod-running-the-current-digest
+          helper: ../tasks/module2-assert-preprod.yml
+          pods:
+            resources:
+              - status:
+                  containerStatuses:
+                    - {name: parasol-insurance, ready: true, imageID: "{{ 'registry.example/test@sha256:' ~ ('a' * 64) }}"}
+        - name: old-ready-preprod-is-not-the-new-release
+          helper: ../tasks/module2-assert-preprod.yml
+          pods:
+            resources:
+              - status:
+                  containerStatuses:
+                    - {name: parasol-insurance, ready: true, imageID: "{{ 'registry.example/test@sha256:' ~ ('b' * 64) }}"}
+          must_fail: true
+        - name: unready-current-preprod-is-not-a-pass
+          helper: ../tasks/module2-assert-preprod.yml
+          pods:
+            resources:
+              - status:
+                  containerStatuses:
+                    - {name: parasol-insurance, ready: false, imageID: "{{ 'registry.example/test@sha256:' ~ ('a' * 64) }}"}
+          must_fail: true
+        - name: missing-preprod-is-not-a-pass
+          helper: ../tasks/module2-assert-preprod.yml
+          pods: {resources: []}
+          must_fail: true
+        - name: unrelated-ready-sidecar-is-not-a-pass
+          helper: ../tasks/module2-assert-preprod.yml
+          pods:
+            resources:
+              - status:
+                  containerStatuses:
+                    - {name: sidecar, ready: true, imageID: "{{ 'registry.example/test@sha256:' ~ ('a' * 64) }}"}
+          must_fail: true
+      loop_control:
+        loop_var: qa_case
+        label: "{{ qa_case.name }}"
+
     - name: Supply an unsafe Backstage template as returned by the GitLab API
       ansible.builtin.set_fact:
         _m2_template_open: !unsafe '${{'
