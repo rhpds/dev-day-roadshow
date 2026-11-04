@@ -76,11 +76,14 @@ and removes it in `always`, including after failures.
    `UNSIGNED`, while the enforced MR must fail specifically at signature
    verification and GitLab must refuse the merge.
 5. Push a genuinely signed correction, require the MR signature and build checks
-   to pass, wait for Chains signing, then test unsigned and signed-but-unapproved
-   image rejection using **immutable digests**, not image tags.
+   to pass, wait for Chains processing, and test unsigned-image rejection using
+   an **immutable digest**, not an image tag.
 6. Merge the signed source MR, verify the post-merge signature/ACS results and
-   immutable image digest, wait for Chains provenance, and require a ready preprod
-   application container running that exact digest before creating a release tag.
+   exported immutable image digest, wait for Chains provenance, and require a
+   ready preprod application container running that exact digest. Test this signed
+   but unapproved image: **only** release approval may fail. The MR pipeline does
+   not export pipeline-level image outputs, so its build TaskRun image is not
+   used as the whole-pipeline signed-commit provenance fixture. No policy is relaxed.
 7. Create a release tag and require Conforma to reject it before approval.
 8. Submit a **real signed release approval** through the approval application's
    API using the student's identity. Create another release tag; require successful

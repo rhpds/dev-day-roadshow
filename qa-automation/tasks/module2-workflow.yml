@@ -410,11 +410,7 @@
     that:
       - _m2_task_results.IMAGE_DIGEST | default('') is match('^sha256:[0-9a-f]{64}$')
 
-- name: Save the signed but unapproved MR image by digest
-  ansible.builtin.set_fact:
-    _m2_mr_image: "{{ _m2_image }}@{{ _m2_task_results.IMAGE_DIGEST }}"
-
-- name: Wait for Chains to sign the MR image
+- name: Wait for Chains to finish processing the MR run
   kubernetes.core.k8s_info:
     api_version: tekton.dev/v1
     kind: PipelineRun
@@ -444,13 +440,6 @@
     _m2_admission_image: "{{ _m2_unsigned_image }}"
     _m2_required_policies: [parasol-image-signature-required, parasol-signed-commit-required, parasol-release-approval-required]
     _m2_forbidden_policies: []
-
-- name: Reject a signed but unapproved MR image for approval only
-  ansible.builtin.include_tasks: module2-admission.yml
-  vars:
-    _m2_admission_image: "{{ _m2_mr_image }}"
-    _m2_required_policies: [parasol-release-approval-required]
-    _m2_forbidden_policies: [parasol-image-signature-required, parasol-signed-commit-required]
 
 - name: Wait for GitLab to mark the signed MR mergeable
   ansible.builtin.uri:
@@ -538,6 +527,17 @@
 
 - name: Assert the preprod release prerequisite
   ansible.builtin.include_tasks: module2-assert-preprod.yml
+
+# The MR pipeline does not export IMAGE_URL/IMAGE_DIGEST at pipeline level.
+# Its build TaskRun image need not carry the whole-pipeline signed-commit
+# provenance checked by admission. Use the promotable post-merge image instead,
+# after its exported SIGNED/ACS results, Chains processing and preprod rollout.
+- name: Reject the signed but unapproved post-merge image for approval only
+  ansible.builtin.include_tasks: module2-admission.yml
+  vars:
+    _m2_admission_image: "{{ _m2_image }}@{{ _m2_build_results.IMAGE_DIGEST }}"
+    _m2_required_policies: [parasol-release-approval-required]
+    _m2_forbidden_policies: [parasol-image-signature-required, parasol-signed-commit-required]
 
 - name: Create the first release tag without approval
   ansible.builtin.uri:
