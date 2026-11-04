@@ -210,7 +210,8 @@
             command: [sleep, '14400']
             resources:
               requests: {cpu: 100m, memory: 256Mi}
-              limits: {memory: 1Gi}
+              # Avoid the tenant LimitRange's 1-CPU default blocking build pods.
+              limits: {cpu: 200m, memory: 1Gi}
             volumeMounts:
               - {name: identity, mountPath: /var/run/sigstore/cosign}
         volumes:
