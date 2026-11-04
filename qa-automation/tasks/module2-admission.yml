@@ -1,0 +1,16 @@
+---
+# Use a Pod: some policy-controller versions validate Pods but not Deployments.
+# Server-side dry-run invokes admission without leaving a workload behind.
+- name: "Test admission for {{ _m2_admission_image }}"
+  ansible.builtin.command:
+    argv: [oc, create, --dry-run=server, -f, '-']
+    stdin: >-
+      {{ {'apiVersion': 'v1', 'kind': 'Pod',
+          'metadata': {'name': _m2_id ~ '-admission', 'namespace': _tenant_user ~ '-secured-prod'},
+          'spec': {'restartPolicy': 'Never', 'containers': [{'name': 'test', 'image': _m2_admission_image}]}} | to_json }}
+  register: _m2_admission
+  changed_when: false
+  failed_when: false
+
+- name: Validate policy-specific admission behavior
+  ansible.builtin.include_tasks: module2-assert-admission.yml

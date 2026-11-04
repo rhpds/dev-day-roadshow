@@ -1,0 +1,21 @@
+---
+- name: "Read {{ _m2_task_name }} from the current PipelineRun"
+  kubernetes.core.k8s_info:
+    api_version: tekton.dev/v1
+    kind: TaskRun
+    namespace: "{{ _m2_run.metadata.namespace }}"
+    label_selectors:
+      - "tekton.dev/pipelineRun={{ _m2_run.metadata.name }}"
+      - "tekton.dev/pipelineTask={{ _m2_task_name }}"
+  register: _m2_task_lookup
+
+- name: Require the task to have run
+  ansible.builtin.assert:
+    that:
+      - _m2_task_lookup.resources | length == 1
+    fail_msg: "Missing task {{ _m2_task_name }} in {{ _m2_run.metadata.name }}"
+
+- name: Store current task and its results
+  ansible.builtin.set_fact:
+    _m2_task: "{{ _m2_task_lookup.resources[0] }}"
+    _m2_task_results: "{{ _m2_task_lookup.resources[0].status.results | default(_m2_task_lookup.resources[0].status.taskResults | default([])) | items2dict(key_name='name', value_name='value') }}"

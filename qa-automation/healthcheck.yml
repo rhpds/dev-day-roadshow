@@ -19,12 +19,12 @@
 #
 # What it checks (in order):
 #   1. Tenant namespaces exist
-#   2. ArgoCD apps are Synced + Healthy
+#   2. ArgoCD apps exist and are Healthy/Progressing (sync drift is a warning)
 #   3. Key deployments are ready (1+ available replicas)
 #   4. Routes return HTTP 200 (showroom, parasol-insurance, payments-api)
 #
 # Design notes:
-#   - Tenant-only — no cluster-level checks (cluster is validated before tenants)
+#   - Tenant readiness plus Module 2 signing/security dependency readiness
 #   - Fast — uses k8s_info lookups, no heavy waits
 #   - Simple — pass/fail per check, clear error messages
 # =============================================================================
@@ -54,6 +54,9 @@
       - "{{ _tenant_user }}-showroom"
       - "{{ _tenant_user }}-devspaces"
       - "{{ _tenant_user }}-ai-mta"
+      - "{{ _tenant_user }}-secured-build"
+      - "{{ _tenant_user }}-preprod"
+      - "{{ _tenant_user }}-secured-prod"
 
     # ArgoCD apps we expect per tenant
     tenant_argo_apps:
@@ -65,6 +68,10 @@
       - "{{ _tenant_user }}-parasol-troubleshooting"
       - "{{ _tenant_user }}-workload-m3"
       - "{{ _tenant_user }}-workload-m5"
+      - "{{ _tenant_user }}-parasol-insurance-secured"
+      - "{{ _tenant_user }}-secured-build"
+      - "{{ _tenant_user }}-preprod"
+      - "{{ _tenant_user }}-secured-prod"
 
     # Deployments to check: namespace -> list of deployment names
     tenant_deployments:
@@ -290,6 +297,15 @@
       loop_control:
         label: "{{ item.namespace }}/{{ item.name }}"
 
+    - name: Record missing student-facing routes
+      ansible.builtin.set_fact:
+        healthcheck_failures: >-
+          {{ healthcheck_failures + ['Route ' ~ item.item.namespace ~ '/' ~ item.item.name ~ ' not found'] }}
+      loop: "{{ r_route_lookups.results }}"
+      loop_control:
+        label: "{{ item.item.namespace }}/{{ item.item.name }}"
+      when: item.resources | length == 0
+
     - name: Check route responds with HTTP 200
       ansible.builtin.uri:
         url: "https://{{ item.resources[0].spec.host }}"
@@ -399,6 +415,30 @@
           {{ healthcheck_failures +
              ['DevWorkspace mta-lab not found in ' + _tenant_user + '-devspaces'] }}
       when: r_mta_dw.resources | default([]) | length == 0
+
+    # =========================================================================
+    # Module 2: readiness, including shared signing/security dependencies.
+    # Progressing is valid before student approval; do not require prod app pods.
+    # =========================================================================
+    - name: Check Module 2 prerequisites
+      ansible.builtin.import_tasks: tasks/health-module2.yml
+      module_defaults:
+        kubernetes.core.k8s_info:
+          host: "{{ _k8s_host | default(omit, true) }}"
+          api_key: "{{ _k8s_api_key | default(omit, true) }}"
+          validate_certs: "{{ _k8s_validate_certs }}"
+
+    - name: Report sync drift separately from workload readiness
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: {{ item.item }} is {{ item.resources[0].status.sync.status | default('Unknown') }}/{{ item.resources[0].status.health.status | default('Unknown') }}.
+          Progressing and known shared-resource ownership drift may be expected; inspect the resource details.
+      loop: "{{ r_argo_checks.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when:
+        - item.resources | length > 0
+        - item.resources[0].status.sync.status | default('') != 'Synced'
 
     # =========================================================================
     # Summary
