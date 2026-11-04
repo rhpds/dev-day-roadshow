@@ -200,6 +200,8 @@ The MR on the manifests repository shows all the Conforma validation results, in
 +
 image::m02-gitlab-prod-mr.png[Production MR on the manifests repository showing Conforma validation results,link=self,window=blank,width=700]
 +
+NOTE: You may see warnings for **Image vulnerability summary** (unaddressed vulnerabilities in dependencies) and **SonarQube analysis highlights** (code quality findings). These are informational — they are not severe enough to fail the promotion. You could address them separately as time allows.
++
 image::m02-gitlab-prod-mr-merge.png[Merge button on the production MR,link=self,window=blank,width=700]
 
 . Approve and merge the MR on the manifests repository.
