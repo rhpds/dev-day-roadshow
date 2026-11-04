@@ -63,9 +63,20 @@ spec:
     # --- Common fields (both platforms) ---
     aap_version: ""                    # required if AAP in products
     ai_requirement: "maas"             # maas | gpu | none
-    ai_model_tier: "open-source"       # open-source | frontier (if ai_requirement = maas or gpu)
-    ai_model_name: "qwen3-235b"        # specific model e.g. granite-3.1-8b
-    ai_justification: ""               # required if ai_model_tier = frontier or ai_requirement = gpu
+    ai_model_tier: "frontier"          # highest tier used by the checked deployment defaults
+    ai_model_name: "claude-sonnet-4-6-a70b" # primary IDE/DLS and Lightspeed deployment default
+    # Multi-model inventory and source links are in spec/design.md; this schema has one primary model field.
+    ai_justification: >-
+      The checked Dev Spaces aiAssistantModel and OpenShift Lightspeed llm.model defaults
+      use claude-sonnet-4-6-a70b. Developer Hub uses that alias for validation/safety;
+      its user-chat selection follows the configured Llama Stack provider/UI. Module 3
+      Camel agents and both Gold/Silver profiles use qwen3-14b. The Module 5 manual
+      provider-recovery example and current Module 1/5 E2E defaults use qwen3-235b,
+      which is not the prefilled IDE/DLS deployment default. Module 2 has no required
+      inference alias. qwen38-27b and claude-opus-5-5-a96b are allowed aliases, not
+      selected defaults in the checked module paths. Event readiness requires the
+      actual selected models, tool-calling support, authorized keys and sufficient
+      shared TPM for all agent rounds. This inventory does not claim capacity validation.
     non_ga_products: []                # list of non-GA products/versions
     non_ga_access_plan: ""             # how access is provided for non-GA products
     external_services:                 # named external service dependencies e.g. [github.com]
