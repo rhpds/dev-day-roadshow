@@ -1,0 +1,33 @@
+---
+- name: Classify Module 2 shared-service availability
+  ansible.builtin.set_fact:
+    _m2_service_report_json: >-
+      {% set report = [] %}
+      {% for lookup in _m2_service_lookups.results %}
+      {% set resources = lookup.resources | default([]) %}
+      {% set available = (resources[0].status.availableReplicas | default(0) | int)
+         if resources | length == 1 else 0 %}
+      {% set check = lookup.item.namespace ~ '/' ~ lookup.item.name %}
+      {% set reason = 'Available replicas: ' ~ available ~ '; no unavailable-service failure is expected.'
+         if available > 0 else 'Deployment is missing or has no available replicas.' %}
+      {% set _ = report.append({'check': check, 'state': 'PASS' if available > 0 else 'FAIL',
+         'reason': reason, 'failure': 'Module 2: service deployment ' ~ check ~ ' is unavailable'}) %}
+      {% endfor %}
+      {{ report | to_json }}
+
+- name: Decode the safe metadata-only report
+  ansible.builtin.set_fact:
+    _m2_service_report: "{{ _m2_service_report_json | from_json }}"
+
+- name: Explain each Module 2 shared-service result
+  ansible.builtin.debug:
+    msg: "{{ item.state }} — {{ item.check }}: {{ item.reason }}"
+  loop: "{{ _m2_service_report }}"
+  loop_control:
+    label: "{{ item.check }}"
+
+- name: Record only unavailable Module 2 services
+  ansible.builtin.set_fact:
+    healthcheck_failures: >-
+      {{ healthcheck_failures + (_m2_service_report
+         | selectattr('state', 'equalto', 'FAIL') | map(attribute='failure') | list) }}

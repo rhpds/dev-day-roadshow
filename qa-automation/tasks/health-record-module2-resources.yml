@@ -1,17 +1,53 @@
 ---
-- name: Record missing Module 2 prerequisites
+# Build a metadata-only report once. Never copy secret values into the report.
+- name: Classify Module 2 prerequisite checks safely
+  ansible.builtin.set_fact:
+    _m2_prerequisite_report_json: >-
+      {% set report = [] %}
+      {% for lookup in _m2_health_lookups.results %}
+      {% set spec = lookup.item %}
+      {% set resources = lookup.resources | default([]) %}
+      {% set check = spec.kind ~ ' ' ~ (spec.namespace | default('cluster')) ~ '/' ~ spec.name %}
+      {% set initial_gate = _m2_prod_release_pending | default(false) | bool
+         and spec.kind == 'Deployment' and spec.name == 'parasol-insurance'
+         and spec.namespace | default('') == _tenant_user ~ '-secured-prod' %}
+      {% if resources | length != 1 %}
+      {% set state = 'EXPECTED' if initial_gate else 'FAIL' %}
+      {% set reason = 'Initial :1.0 Deployment is intentionally blocked until a digest is promoted; no missing-resource failure is expected.'
+         if initial_gate else 'Resource is missing or unreadable.' %}
+      {% elif spec.kind == 'Secret' %}
+      {% set ready = resources[0].data | default({}) | length > 0 %}
+      {% set state = 'PASS' if ready else 'FAIL' %}
+      {% set reason = 'Credential data is populated; values are hidden. No empty-secret failure is expected.'
+         if ready else 'Credential Secret contains no data.' %}
+      {% elif spec.kind == 'PersistentVolumeClaim' %}
+      {% set phase = resources[0].status.phase | default('Unknown') %}
+      {% set state = 'PASS' if phase == 'Bound' else 'FAIL' %}
+      {% set reason = 'Storage is Bound; no unbound-storage failure is expected.'
+         if phase == 'Bound' else 'Storage phase is ' ~ phase ~ '; expected Bound.' %}
+      {% else %}
+      {% set state = 'PASS' %}
+      {% set reason = 'Resource is provisioned; no missing-resource failure is expected.' %}
+      {% endif %}
+      {% set _ = report.append({'check': check, 'state': state, 'reason': reason,
+         'failure': 'Module 2: ' ~ check ~ ': ' ~ reason}) %}
+      {% endfor %}
+      {{ report | to_json }}
+  no_log: true
+
+- name: Decode the safe metadata-only report
+  ansible.builtin.set_fact:
+    _m2_prerequisite_report: "{{ _m2_prerequisite_report_json | from_json }}"
+
+- name: Explain each Module 2 prerequisite result
+  ansible.builtin.debug:
+    msg: "{{ item.state }} — {{ item.check }}: {{ item.reason }}"
+  loop: "{{ _m2_prerequisite_report }}"
+  loop_control:
+    label: "{{ item.check }}"
+
+- name: Record only failed Module 2 prerequisite checks
   ansible.builtin.set_fact:
     healthcheck_failures: >-
-      {{ healthcheck_failures + ['Module 2: ' ~ item.item.kind ~ ' ' ~
-         (item.item.namespace | default('cluster')) ~ '/' ~ item.item.name ~ ' missing or unreadable'] }}
-  loop: "{{ _m2_health_lookups.results }}"
-  loop_control:
-    label: "{{ item.item.kind }}/{{ item.item.name }}"
-  when:
-    - item.resources | default([]) | length != 1
-    - >-
-      not (_m2_prod_release_pending | default(false) | bool
-           and item.item.kind == 'Deployment'
-           and item.item.name == 'parasol-insurance'
-           and item.item.namespace | default('') == _tenant_user ~ '-secured-prod')
-  no_log: true
+      {{ healthcheck_failures + (_m2_prerequisite_report
+         | selectattr('state', 'equalto', 'FAIL') | map(attribute='failure') | list) }}
