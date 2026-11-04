@@ -1,0 +1,420 @@
+---
+- name: Allocate a unique Module 1 branch and sandbox
+  ansible.builtin.set_fact:
+    _m1_id: "e2e1-{{ lookup('ansible.builtin.password', '/dev/null', length=8, chars=['ascii_lowercase', 'digits']) }}"
+    _m2_template_open: !unsafe '${{'
+    _m2_template_path: templates/parasol-dev-environment/manifests/
+    _m2_template_actions: []
+    _m1_file_path: src/main/java/com/parasol/ClaimsStatsResource.java
+
+- name: Set sandbox namespace and release tag
+  ansible.builtin.set_fact:
+    _m1_namespace: "{{ _tenant_user }}-{{ _m1_id }}"
+    _m1_release: "{{ _m1_id }}-release"
+
+- name: Authenticate to GitLab as the student
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/oauth/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      username: "{{ _tenant_user }}"
+      password: "{{ _tenant_password }}"
+    status_code: 200
+  register: _m1_oauth
+  no_log: true
+
+- name: Store authorization for source and template APIs
+  ansible.builtin.set_fact:
+    _m1_headers: {Authorization: "Bearer {{ _m1_oauth.json.access_token }}"}
+    _m2_gitlab_headers: {Authorization: "Bearer {{ _m1_oauth.json.access_token }}"}
+  no_log: true
+
+- name: Read the actual source project and student namespace
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/{{ item }}"
+    headers: "{{ _m1_headers }}"
+    status_code: 200
+  loop:
+    - "projects/{{ _tenant_user }}%2Fparasol-insurance"
+    - "namespaces?search={{ _tenant_user }}&per_page=100"
+  register: _m1_project_lookups
+  no_log: true
+
+- name: Store source ID and require exactly the student namespace
+  ansible.builtin.set_fact:
+    _m1_source_id: "{{ _m1_project_lookups.results[0].json.id }}"
+    _m1_namespaces: "{{ _m1_project_lookups.results[1].json | selectattr('full_path', 'equalto', _tenant_user) | list }}"
+
+- name: Validate the student's GitLab namespace
+  ansible.builtin.assert:
+    that: [_m1_namespaces | length == 1]
+
+- name: Create a short feature branch
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m1_source_id }}/repository/branches"
+    method: POST
+    headers: "{{ _m1_headers }}"
+    body_format: json
+    body: {branch: "{{ _m1_id }}", ref: main}
+    status_code: 201
+  no_log: true
+
+- name: List the imported Developer Hub development template
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/parasol%2Frhdh-templates/repository/tree?ref=main&recursive=true&per_page=100&path={{ _m2_template_path | urlencode }}"
+    headers: "{{ _m1_headers }}"
+    status_code: 200
+  register: _m1_template_tree
+  no_log: true
+
+- name: Reject missing or truncated template listings
+  ansible.builtin.assert:
+    that:
+      - _m1_template_tree.json | length > 0
+      - _m1_template_tree.json | length < 100
+
+- name: Set the same sandbox parameters as the self-service template
+  ansible.builtin.set_fact:
+    _m2_template_values:
+      namespace: "{{ _m1_namespace }}"
+      branch: "{{ _m1_id }}"
+      source_repo: "{{ _gitlab_url }}/{{ _tenant_user }}/parasol-insurance.git"
+      owner: "{{ _tenant_user }}"
+      image_host: "quay.{{ _ingress_domain }}"
+      image_organization: parasol
+      image_name: "parasol-insurance-{{ _tenant_user }}"
+      image_tag: latest
+      gitlab_host: "{{ _gitlab_host }}"
+      cluster_subdomain: "{{ _ingress_domain }}"
+      gitops_namespace: openshift-gitops
+      dev_email: "{{ _tenant_user }}@demo.redhat.com"
+
+- name: Render the actual development template using the shared renderer
+  ansible.builtin.include_tasks: module2-render-file.yml
+  loop: "{{ _m1_template_tree.json | selectattr('type', 'equalto', 'blob') | list }}"
+  loop_control:
+    loop_var: m2_template_file
+    label: "{{ m2_template_file.path }}"
+
+- name: Create the run-owned sandbox GitOps repository
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects"
+    method: POST
+    headers: "{{ _m1_headers }}"
+    body_format: json
+    body:
+      name: "parasol-insurance-{{ _m1_id }}-gitops"
+      namespace_id: "{{ _m1_namespaces[0].id }}"
+      visibility: public
+    status_code: 201
+  register: _m1_gitops_project
+  no_log: true
+
+- name: Commit the sandbox chart
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m1_gitops_project.json.id }}/repository/commits"
+    method: POST
+    headers: "{{ _m1_headers }}"
+    body_format: json
+    body:
+      branch: main
+      commit_message: "test: RHDPCD-864 initialize {{ _m1_id }} sandbox"
+      actions: "{{ _m2_template_actions }}"
+    status_code: 201
+  no_log: true
+
+- name: Provision the sandbox through ArgoCD
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      metadata:
+        name: "{{ _m1_id }}"
+        namespace: openshift-gitops
+        finalizers: [resources-finalizer.argocd.argoproj.io]
+      spec:
+        project: "appproject-{{ _tenant_user }}"
+        destination:
+          namespace: "{{ _m1_namespace }}"
+          server: https://kubernetes.default.svc
+        source:
+          repoURL: "{{ _m1_gitops_project.json.http_url_to_repo }}"
+          path: helm
+          targetRevision: main
+        syncPolicy:
+          automated: {prune: true, selfHeal: true}
+          syncOptions: [CreateNamespace=true, RespectIgnoreDifferences=true]
+
+- name: Wait until the branch webhook is configured
+  kubernetes.core.k8s_info:
+    api_version: batch/v1
+    kind: Job
+    namespace: "{{ _m1_namespace }}"
+    name: parasol-insurance-webhook
+  register: _m1_webhook
+  until:
+    - _m1_webhook.resources | length == 1
+    - _m1_webhook.resources[0].status.succeeded | default(0) > 0
+  retries: 90
+  delay: 10
+
+# Establish the project's clean analysis baseline before testing new code.
+# Otherwise a first-ever Sonar analysis may classify all defects as legacy code.
+- name: Push a harmless baseline commit after webhook provisioning
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m1_source_id }}/repository/commits"
+    method: POST
+    headers: "{{ _m1_headers }}"
+    body_format: json
+    body:
+      branch: "{{ _m1_id }}"
+      commit_message: "test: RHDPCD-864 establish sandbox analysis baseline {{ _m1_id }}"
+      actions:
+        - {action: create, file_path: ".qa-{{ _m1_id }}", content: "Disposable QA baseline {{ _m1_id }}\n"}
+    status_code: 201
+  register: _m1_baseline_commit
+  no_log: true
+
+- name: Require a healthy baseline build before introducing exercise defects
+  ansible.builtin.include_tasks: module2-wait-pipeline.yml
+  vars:
+    _m2_pipeline_namespace: "{{ _m1_namespace }}"
+    _m2_pipeline: parasol-insurance-push
+    _m2_run_param: {name: git-revision, value: "{{ _m1_baseline_commit.json.id }}"}
+    _m2_expected_status: 'True'
+
+- name: Determine whether the exercise file already exists on this tenant
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m1_source_id }}/repository/files/{{ _m1_file_path | urlencode | replace('/', '%2F') }}?ref={{ _m1_id }}"
+    headers: "{{ _m1_headers }}"
+    status_code: [200, 404]
+  register: _m1_existing_file
+  no_log: true
+
+- name: Push the exercise's intentionally flawed source fixture to the correct package
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m1_source_id }}/repository/commits"
+    method: POST
+    headers: "{{ _m1_headers }}"
+    body_format: json
+    body:
+      branch: "{{ _m1_id }}"
+      commit_message: "test: RHDPCD-864 reproduce exercise quality violations {{ _m1_id }}"
+      actions:
+        - action: "{{ 'update' if _m1_existing_file.status == 200 else 'create' }}"
+          file_path: "{{ _m1_file_path }}"
+          content: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/fixtures/module1/ClaimsStatsResource.initial.java') }}"
+    status_code: 201
+  register: _m1_bad_commit
+  no_log: true
+
+- name: Require the exercise quality gate to fail for this exact commit
+  ansible.builtin.include_tasks: module2-wait-pipeline.yml
+  vars:
+    _m2_pipeline_namespace: "{{ _m1_namespace }}"
+    _m2_pipeline: parasol-insurance-push
+    _m2_run_param: {name: git-revision, value: "{{ _m1_bad_commit.json.id }}"}
+    _m2_expected_status: 'False'
+
+- name: Read the failing quality gate
+  ansible.builtin.include_tasks: module2-task.yml
+  vars: {_m2_task_name: sonar-scan}
+
+- name: Require an actual SonarQube rejection, not a build or infrastructure error
+  ansible.builtin.assert:
+    that:
+      - _m2_task.status.conditions[0].status == 'False'
+      - _m2_task_results.SONAR_QUALITY_GATE | default('') == 'FAILED'
+
+- name: Require the AI backend configured for the coding assistant
+  ansible.builtin.assert:
+    that:
+      - _litellm_endpoint | length > 0
+      - _litellm_key | length > 0
+
+- name: Exercise the AI coding-assistant backend
+  ansible.builtin.uri:
+    url: "{{ _litellm_endpoint }}/chat/completions"
+    method: POST
+    headers: {Authorization: "Bearer {{ _litellm_key }}"}
+    body_format: json
+    body:
+      model: qwen3-235b
+      messages:
+        - role: user
+          content: Replace System.out.println, empty catch blocks and field injection in a Quarkus REST resource with proper logging and constructor injection.
+      max_tokens: 300
+    status_code: 200
+  register: _m1_ai
+  no_log: true
+
+- name: Require an actual AI response
+  ansible.builtin.assert:
+    that:
+      - _m1_ai.json.choices | default([]) | length > 0
+      - _m1_ai.json.choices[0].message.content | default('') | length > 0
+  no_log: true
+
+# Use the documented manual fallback after exercising AI. A deterministic
+# fixture makes the acceptance test repeatable without trusting generated code.
+- name: Push the corrected source fixture from the current exercise
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m1_source_id }}/repository/commits"
+    method: POST
+    headers: "{{ _m1_headers }}"
+    body_format: json
+    body:
+      branch: "{{ _m1_id }}"
+      commit_message: "test: RHDPCD-864 fix exercise quality violations {{ _m1_id }}"
+      actions:
+        - action: update
+          file_path: "{{ _m1_file_path }}"
+          content: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/fixtures/module1/ClaimsStatsResource.fixed.java') }}"
+    status_code: 201
+  register: _m1_good_commit
+  no_log: true
+
+- name: Require the corrected branch build to succeed
+  ansible.builtin.include_tasks: module2-wait-pipeline.yml
+  vars:
+    _m2_pipeline_namespace: "{{ _m1_namespace }}"
+    _m2_pipeline: parasol-insurance-push
+    _m2_run_param: {name: git-revision, value: "{{ _m1_good_commit.json.id }}"}
+    _m2_expected_status: 'True'
+
+- name: Read the passing quality gate
+  ansible.builtin.include_tasks: module2-task.yml
+  vars: {_m2_task_name: sonar-scan}
+
+- name: Require the corrected source to pass SonarQube
+  ansible.builtin.assert:
+    that:
+      - _m2_task_results.SONAR_QUALITY_GATE == 'PASSED'
+
+- name: Open the source merge request
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m1_source_id }}/merge_requests"
+    method: POST
+    headers: "{{ _m1_headers }}"
+    body_format: json
+    body: {source_branch: "{{ _m1_id }}", target_branch: main, title: "test: RHDPCD-864 claims statistics {{ _m1_id }}"}
+    status_code: 201
+  register: _m1_source_mr
+  no_log: true
+
+- name: Wait for source MR mergeability
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m1_source_id }}/merge_requests/{{ _m1_source_mr.json.iid }}"
+    headers: "{{ _m1_headers }}"
+    status_code: 200
+  register: _m1_source_mergeable
+  until: _m1_source_mergeable.json.detailed_merge_status == 'mergeable'
+  retries: 36
+  delay: 5
+  no_log: true
+
+- name: Merge exactly the corrected source SHA
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m1_source_id }}/merge_requests/{{ _m1_source_mr.json.iid }}/merge"
+    method: PUT
+    headers: "{{ _m1_headers }}"
+    body_format: json
+    body: {sha: "{{ _m1_good_commit.json.id }}"}
+    status_code: 200
+  register: _m1_source_merged
+  no_log: true
+
+- name: Require a real source merge
+  ansible.builtin.assert:
+    that: [_m1_source_merged.json.state == 'merged']
+
+- name: Save the merged source SHA
+  ansible.builtin.set_fact:
+    _m1_merged_sha: "{{ _m1_source_merged.json.merge_commit_sha | default(_m1_good_commit.json.id, true) }}"
+
+- name: Require the exact post-merge dev build to succeed
+  ansible.builtin.include_tasks: module2-wait-pipeline.yml
+  vars:
+    _m2_pipeline_namespace: "{{ _tenant_user }}-build"
+    _m2_pipeline: parasol-insurance-push
+    _m2_run_param: {name: git-revision, value: "{{ _m1_merged_sha }}"}
+    _m2_expected_status: 'True'
+
+- name: Verify the feature in dev before creating a release
+  ansible.builtin.include_tasks: module1-verify-stats.yml
+  vars: {_m1_environment: dev}
+
+- name: Create a release tag at the tested source SHA
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _m1_source_id }}/repository/tags"
+    method: POST
+    headers: "{{ _m1_headers }}"
+    body_format: json
+    body: {tag_name: "{{ _m1_release }}", ref: "{{ _m1_merged_sha }}"}
+    status_code: 201
+  no_log: true
+
+- name: Require the exact release pipeline to succeed
+  ansible.builtin.include_tasks: module2-wait-pipeline.yml
+  vars:
+    _m2_pipeline_namespace: "{{ _tenant_user }}-build"
+    _m2_pipeline: parasol-insurance-tag-promote
+    _m2_run_param: {name: git-tag, value: "{{ _m1_release }}"}
+    _m2_expected_status: 'True'
+
+- name: Find the production GitOps MR generated for this release
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _tenant_user }}%2Fparasol-insurance-manifests/merge_requests?state=opened&target_branch=main&source_branch=promote-{{ _m1_release }}"
+    headers: "{{ _m1_headers }}"
+    status_code: 200
+  register: _m1_prod_mrs
+  until: _m1_prod_mrs.json | length == 1
+  retries: 18
+  delay: 10
+  no_log: true
+
+- name: Merge the production manifests MR (required by the current exercise)
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/{{ _tenant_user }}%2Fparasol-insurance-manifests/merge_requests/{{ _m1_prod_mrs.json[0].iid }}/merge"
+    method: PUT
+    headers: "{{ _m1_headers }}"
+    body_format: json
+    body: {sha: "{{ _m1_prod_mrs.json[0].sha }}"}
+    status_code: 200
+  register: _m1_prod_merged
+  no_log: true
+
+- name: Require a real production manifests merge
+  ansible.builtin.assert:
+    that: [_m1_prod_merged.json.state == 'merged']
+
+- name: Wait for production to use the tested release tag
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ _tenant_user }}-prod"
+    name: parasol-insurance
+  register: _m1_prod_deployment
+  until:
+    - _m1_prod_deployment.resources | length == 1
+    - _m1_prod_deployment.resources[0].spec.template.spec.containers | selectattr('image', 'search', ':' ~ _m1_release ~ '$') | list | length > 0
+    - _m1_prod_deployment.resources[0].status.observedGeneration | default(0) >= _m1_prod_deployment.resources[0].metadata.generation
+    - _m1_prod_deployment.resources[0].status.updatedReplicas | default(0) == _m1_prod_deployment.resources[0].spec.replicas
+    - _m1_prod_deployment.resources[0].status.availableReplicas | default(0) >= _m1_prod_deployment.resources[0].spec.replicas
+  retries: 60
+  delay: 10
+
+- name: Verify the feature in production
+  ansible.builtin.include_tasks: module1-verify-stats.yml
+  vars: {_m1_environment: prod}
+
+- name: Module 1 E2E passed
+  ansible.builtin.debug:
+    msg: >-
+      PASS {{ _m1_id }}: actual development sandbox, expected SonarQube rejection,
+      AI backend response, corrected exercise source and successful quality gate,
+      source merge and correlated dev build, release pipeline, production GitOps
+      MR merge, exact release rollout and claims-statistics JSON in dev/prod.

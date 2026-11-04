@@ -1,0 +1,25 @@
+---
+- name: "Read the {{ _m1_environment }} application Route"
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    namespace: "{{ _tenant_user }}-{{ _m1_environment }}"
+    name: parasol-insurance
+  register: _m1_stats_route
+
+- name: Require the application Route to exist
+  ansible.builtin.assert:
+    that: [_m1_stats_route.resources | length == 1]
+
+- name: "Require the statistics endpoint in {{ _m1_environment }}"
+  ansible.builtin.uri:
+    url: "https://{{ _m1_stats_route.resources[0].spec.host }}/api/claims/stats"
+    status_code: 200
+    return_content: true
+  register: _m1_stats
+  until: _m1_stats.status | default(0) == 200
+  retries: 12
+  delay: 10
+
+- name: Validate the statistics response
+  ansible.builtin.include_tasks: module1-assert-stats.yml
