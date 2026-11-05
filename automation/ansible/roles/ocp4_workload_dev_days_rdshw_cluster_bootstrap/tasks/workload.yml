@@ -109,6 +109,9 @@
         name: self-provisioner
       subjects: []
 
+- name: Resolve platform object storage
+  ansible.builtin.include_tasks: noobaa.yml
+
 - name: Deploy app-of-apps
   ansible.builtin.include_tasks: app_of_apps.yml
 
