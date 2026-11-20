@@ -26,9 +26,6 @@ rules:
   - apiGroups: ["operator.tekton.dev"]
     resources: ["tektonconfigs"]
     verbs: ["get", "patch"]
-  - apiGroups: ["operator.tekton.dev"]
-    resources: ["tektoninstallersets"]
-    verbs: ["get", "list", "update"]
   - apiGroups: ["operator.openshift.io"]
     resources: ["consoles"]
     verbs: ["get", "patch"]
@@ -45,6 +42,51 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: tektonconfig-patch
+subjects:
+  - kind: ServiceAccount
+    name: tektonconfig-patch
+    namespace: {{ .Release.Namespace }}
+# Results configuration is namespaced. Keep these permissions out of the
+# ClusterRole: this hook only updates this ConfigMap and restarts Results pods
+# in the Pipelines namespace. Without them, set -e exits before Chains setup.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tektonconfig-patch-results
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["tekton-results-api-config"]
+    verbs: ["get", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["chains-config"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["tekton-chains-controller"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tektonconfig-patch-results
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tektonconfig-patch-results
 subjects:
   - kind: ServiceAccount
     name: tektonconfig-patch
@@ -119,60 +161,56 @@ spec:
                     "artifacts.pipelinerun.format": "in-toto",
                     "artifacts.pipelinerun.storage": "oci",
                     "artifacts.taskrun.format": "in-toto",
-                    "artifacts.taskrun.storage": "oci"
+                    "artifacts.taskrun.storage": "oci",
+                    "options": {
+                      "deployments": {
+                        "tekton-chains-controller": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "volumes": [{
+                                  "name": "oidc-info",
+                                  "projected": {
+                                    "sources": [{
+                                      "serviceAccountToken": {
+                                        "audience": "trusted-artifact-signer",
+                                        "expirationSeconds": 600,
+                                        "path": "oidc-token"
+                                      }
+                                    }]
+                                  }
+                                }]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }'
               echo "Chains keyless signing configured (TektonConfig CR)"
 
-              # Update the OIDC token audience and attestation format on the
-              # Chains InstallerSet. The operator creates ConfigMaps and
-              # Deployments from the InstallerSet — patching the CR alone
-              # does not propagate to the InstallerSet.
-              # The operator hardcodes "sigstore" but TAS Fulcio requires
-              # "trusted-artifact-signer" as the audience.
-              echo "Patching Chains InstallerSets..."
-
-              echo "Waiting for Chains InstallerSets to be created..."
-              until oc get tektoninstallersets --no-headers | grep "^chain-" | grep -v "config\|secret" | grep -q .; do
-                echo "  Chains InstallerSets not ready yet, waiting..."
-                sleep 10
+              # Keep overrides on the owning CR. Direct InstallerSet edits are
+              # reverted by the operator and silently restore audience=sigstore.
+              # Wait for the actual generated resources, not just a successful
+              # patch response, before declaring Chains configured.
+              CHAINS_READY=false
+              for attempt in {1..60}; do
+                ENABLED=$(oc get cm chains-config -n openshift-pipelines \
+                  -o jsonpath='{.data.signers\.x509\.fulcio\.enabled}')
+                AUDIENCE=$(oc get deployment tekton-chains-controller -n openshift-pipelines \
+                  -o jsonpath='{.spec.template.spec.volumes[?(@.name=="oidc-info")].projected.sources[0].serviceAccountToken.audience}')
+                if [ "${ENABLED}" = "true" ] && [ "${AUDIENCE}" = "trusted-artifact-signer" ]; then
+                  CHAINS_READY=true
+                  break
+                fi
+                echo "Waiting for Chains keyless config and TAS token audience (${attempt}/60)..."
+                sleep 5
               done
-              echo "Chains InstallerSets available."
-
-              # Patch the Deployment InstallerSet: OIDC audience
-              CHAIN_IS=$(oc get tektoninstallersets --no-headers | grep "^chain-" | grep -v "config\|secret" | awk '{print $1}')
-              if [ -n "${CHAIN_IS}" ]; then
-                oc get tektoninstallerset ${CHAIN_IS} -o json | \
-                  python3 -c "
-              import json, sys
-              data = json.load(sys.stdin)
-              for m in data['spec']['manifests']:
-                  if m.get('kind') == 'Deployment':
-                      for v in m['spec']['template']['spec']['volumes']:
-                          if v.get('name') == 'oidc-info':
-                              v['projected']['sources'][0]['serviceAccountToken']['audience'] = 'trusted-artifact-signer'
-              json.dump(data, sys.stdout)
-              " | oc replace -f - 2>/dev/null
-                echo "Chains InstallerSet audience updated to trusted-artifact-signer"
-              fi
-
-              # Patch the Config InstallerSet: attestation format
-              CHAIN_CFG_IS=$(oc get tektoninstallersets --no-headers | grep "^chain-config" | awk '{print $1}')
-              if [ -n "${CHAIN_CFG_IS}" ]; then
-                oc get tektoninstallerset ${CHAIN_CFG_IS} -o json | \
-                  python3 -c "
-              import json, sys
-              data = json.load(sys.stdin)
-              for m in data['spec']['manifests']:
-                  if m.get('kind') == 'ConfigMap' and m['metadata'].get('name') == 'chains-config':
-                      m['data']['artifacts.pipelinerun.format'] = 'in-toto'
-                      m['data']['artifacts.pipelinerun.storage'] = 'oci'
-                      m['data']['artifacts.taskrun.format'] = 'in-toto'
-                      m['data']['artifacts.taskrun.storage'] = 'oci'
-              json.dump(data, sys.stdout)
-              " | oc replace -f - 2>/dev/null
-                echo "Chains InstallerSet attestation format updated to slsa/v2alpha4"
+              if [ "${CHAINS_READY}" != "true" ]; then
+                echo "ERROR: Chains keyless configuration did not reconcile"
+                exit 1
               fi
 
               echo "TektonConfig patched"
