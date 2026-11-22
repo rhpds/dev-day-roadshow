@@ -11,6 +11,20 @@ data:
     import=common/keycloak
     styles=css/styles.css css/custom.css
 ---
+# The background image is embedded in this ConfigMap as binaryData. kubectl
+# stores a last-applied-configuration annotation on every object it manages,
+# and that annotation is capped at 262,144 bytes. The base64-encoded image
+# plus the rest of the ConfigMap must stay under that limit — in practice
+# the raw image file should be ≤ 180 KB (≈ 240 KB base64 + overhead).
+#
+# For larger images, deploy a separate nginx pod to serve the file:
+#   1. Create a dedicated ArgoCD Application with ServerSideApply=true in its
+#      syncOptions (avoids the annotation limit for that app only).
+#   2. In that app, create a ConfigMap with the image in binaryData, an nginx
+#      Deployment mounting it, plus a Service and Route.
+#   3. Reference the Route URL as an absolute URL in the CSS below:
+#        url("https://sso-assets-keycloak.<cluster-domain>/img/sso-bg.jpg")
+#      instead of the relative "../img/custom-bg.jpg".
 apiVersion: v1
 kind: ConfigMap
 metadata:
