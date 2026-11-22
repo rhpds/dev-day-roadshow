@@ -131,7 +131,7 @@ image::m02-devspaces-containerfile.png[Containerfile open in Dev Spaces showing 
 
 . Find the `FROM` statement and note the current base image. It may be using a standard runtime image.
 
-. Replace it with a hardened, minimal base image. Change the `FROM` line to:
+. Replace it with a hardened, minimal base image. You can comment out the `FROM` line at the top and uncomment the `FROM` below, using a hardened base image:
 +
 [source,dockerfile,role="copypaste"]
 ----

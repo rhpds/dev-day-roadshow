@@ -9,7 +9,8 @@ Everything you need is already provisioned. Your lab environment includes:
 * A user account with access to all workshop resources
 * A sample application (Parasol Insurance) that you will extend with a new feature
 
-Your login credentials (use these for Developer Hub, GitLab, and all workshop services):
+Your login credentials (use these for Developer Hub, GitLab, and all workshop services).
+Most of the services use Red Hat build of Keycloak for SSO, so a login to one service should be valid for others, too.
 
 * **Username**: `{user}`
 * **Password**: `{password}`
