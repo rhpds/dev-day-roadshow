@@ -1,12 +1,12 @@
 gitlab:
   image: quay.io/redhat-gpte/gitlab:17.11.7
   email:
-    address: "gitlab@rhdemo.com"
+    address: "gitlab@demo.redhat.com"
     displayName: "GitLab Admin"
-    replyTo: "noreply@rhdemo.com"
+    replyTo: "noreply@demo.redhat.com"
   smtp:
     enabled: "false"
-    domain: "rhdemo.com"
+    domain: "demo.redhat.com"
     host:
     port: "587"
     user: "gitlab"
@@ -17,7 +17,7 @@ gitlab:
   rootPassword:
   host:
   https: "true"
-  rootEmail: "root@rhdemo.com"
+  rootEmail: "root@demo.redhat.com"
   keyBase:
     db: "0123456789"
     otp: "0123456789"
@@ -86,6 +86,12 @@ gitlab:
       templates:
         - templates/parasol-dev-environment/template.yaml
         - templates/secured-parasol-dev-environment/template.yaml
+keycloak:
+  host: ""
+  realm: sso
+  clientId: gitlab
+  clientSecret: ""
+
 postgresql:
   dbUser: gitlab
   dbPassword: passw0rd

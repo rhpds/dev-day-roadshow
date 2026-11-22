@@ -68,6 +68,9 @@ gitlab:
   usersPassword: ""
   cluster:
     subdomain: ""
+  keycloak:
+    host: ""
+    clientSecret: "gL4b-0iDc-S3cr-3t-K3y-V4lu3"
 
 # The Ansible bootstrap enables this automatically when NooBaa is absent.
 # Keep chart-only installs compatible with CNV pools that already supply it.

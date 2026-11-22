@@ -85,6 +85,9 @@ spec:
           usersPassword: "{{ ocp4_workload_dev_days_rdshw_gitlab_users_password }}"
           cluster:
             subdomain: {{ r_openshift_subdomain }}
+          keycloak:
+            host: "sso.{{ r_openshift_subdomain }}"
+            clientSecret: "{{ ocp4_workload_dev_days_rdshw_gitlab_oidc_client_secret }}"
 
         noobaa:
           enabled: {{ r_dev_days_noobaa_install | bool | lower }}

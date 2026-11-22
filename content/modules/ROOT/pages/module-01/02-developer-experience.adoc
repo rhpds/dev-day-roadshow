@@ -194,7 +194,7 @@ image::rhdh-devspaces-link.png[Link to open pre-configured Dev Spaces seen in Re
 
 .. **Authorize access to OpenShift** -- click **Allow selected permissions**
 .. **Do you trust the authors of this repository?** -- click **Continue**
-.. **GitLab login** -- log in with your credentials if needed (username: `{user}`, password: `{password}`)
+.. **GitLab login** -- log in with your credentials if needed (username: `{user}`, password: `{password}`). Should work via Keycloak SSO, but in case your session expired.
 .. **GitLab Authorization** -- click **Authorize** to give DevSpaces permission to open your branch (if you wait too long here, you may need to click **Retry** to try again after giving permission)
 
 . Once the workspace loads, take a moment to explore:

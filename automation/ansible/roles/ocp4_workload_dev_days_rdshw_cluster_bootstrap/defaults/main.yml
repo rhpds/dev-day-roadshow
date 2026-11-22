@@ -38,6 +38,7 @@ ocp4_workload_dev_days_rdshw_gitlab_config_host:
   "gitlab-{{ ocp4_workload_dev_days_rdshw_gitlab_namespace }}.{{ r_openshift_subdomain }}"
 
 ocp4_workload_dev_days_rdshw_gitlab_users_password: "{{ common_password }}"
+ocp4_workload_dev_days_rdshw_gitlab_oidc_client_secret: "gL4b-0iDc-S3cr-3t-K3y-V4lu3"
 
 # ------------------------------------------------
 # Quay

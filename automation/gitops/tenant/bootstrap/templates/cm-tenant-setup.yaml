@@ -51,8 +51,8 @@ data:
             body_format: form-urlencoded
             body:
               admin: false
-              email: "{{ "{{" }} tenant_username {{ "}}" }}@rhdemo.com"
-              public_email: "{{ "{{" }} tenant_username {{ "}}" }}@rhdemo.com"
+              email: "{{ "{{" }} tenant_username {{ "}}" }}@demo.redhat.com"
+              public_email: "{{ "{{" }} tenant_username {{ "}}" }}@demo.redhat.com"
               skip_confirmation: true
               username: "{{ "{{" }} tenant_username {{ "}}" }}"
               password: "{{ "{{" }} tenant_password {{ "}}" }}"
@@ -159,7 +159,7 @@ data:
               Authorization: 'Bearer {{ "{{" }} quay_admin_token {{ "}}" }}'
             body:
               username: "{{ "{{" }} tenant_username {{ "}}" }}"
-              email: "{{ "{{" }} tenant_username {{ "}}" }}@rhdemo.com"
+              email: "{{ "{{" }} tenant_username {{ "}}" }}@demo.redhat.com"
             body_format: json
             validate_certs: false
             status_code:
@@ -200,7 +200,7 @@ data:
         - name: Git config user
           ansible.builtin.command: "{{ "{{" }} item {{ "}}" }}"
           loop:
-            - git config --global user.email "{{ "{{" }} tenant_username {{ "}}" }}@rhdemo.com"
+            - git config --global user.email "{{ "{{" }} tenant_username {{ "}}" }}@demo.redhat.com"
             - git config --global user.name "{{ "{{" }} tenant_username {{ "}}" }}"
 
         - name: Create tenant projects in GitLab

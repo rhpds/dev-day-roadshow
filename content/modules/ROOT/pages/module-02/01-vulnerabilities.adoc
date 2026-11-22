@@ -77,7 +77,7 @@ Alternatively, you can also find it in the catalog as **Parasol Insurance Secure
 +
 image::m02-rhdh-catalog-sandbox.png[Sandbox component in the Developer Hub catalog,link=self,window=blank,width=700]
 
-. Open it, click on the **CI** tab to verify the initial build pipeline has started.
+. Open it, click on the **CI** tab to verify the initial build pipeline has started. Depending on your environment, it may take a moment - you don't have to wait for it. When you come back later and start to wonder why there is an additional pipeline run: That's this initial one triggered by the sandbox deployment.
 +
 image::m02-rhdh-sandbox-initial-build.png[Initial sandbox build running in Developer Hub,link=self,window=blank,width=700]
 +
@@ -125,7 +125,7 @@ image::m02-devspaces-authorize.png[Authorize Access for Dev Spaces,link=self,win
 +
 image::m02-devspaces-trust-authors.png[Trust the authors of this repository,link=self,window=blank,width=700]
 
-. If asked, login to GitLab with `{user}` / `{password}`
+. If asked, login to GitLab with `{user}` / `{password}` (Since you already authenticated to Developer Hub via Keycloak SSO, this step should not be shown - but if it is, login)
 +
 image::m02-devspaces-gitlab-login.png[GitLab login prompt,link=self,window=blank,width=400]
 

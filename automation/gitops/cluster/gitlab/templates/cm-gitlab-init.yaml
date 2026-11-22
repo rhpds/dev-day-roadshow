@@ -94,8 +94,8 @@ data:
             body_format: form-urlencoded
             body:
               admin: false
-              email: {{ $item.id }}@rhdemo.com
-              public_email: {{ $item.id }}@rhdemo.com
+              email: {{ $item.id }}@demo.redhat.com
+              public_email: {{ $item.id }}@demo.redhat.com
               skip_confirmation: true
               username: {{ $item.id }}
               password: {{ include "gitlab-user.password" $ }}
@@ -110,6 +110,32 @@ data:
           retries: 10
           delay: 5
           until: r_user.status in [201, 409]
+{{- end }}
+
+{{- if $.Values.keycloak.host }}
+        - name: Create admin user for SSO
+          ansible.builtin.uri:
+            url: https://{{ $.Values.gitlab.host }}/api/v4/users
+            method: POST
+            body_format: form-urlencoded
+            body:
+              admin: true
+              email: admin@demo.redhat.com
+              public_email: admin@demo.redhat.com
+              skip_confirmation: true
+              username: sso-admin
+              password: {{ $.Values.gitlab.rootPassword }}
+              name: SSO-Admin
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 201
+              - 409
+          register: r_admin_user
+          retries: 10
+          delay: 5
+          until: r_admin_user.status in [201, 409]
 {{- end }}
 
         - name: List users
@@ -511,6 +537,22 @@ data:
             command: >-
               sed -i 's/access_token_expires_in 7200/access_token_expires_in 604800/' /home/git/gitlab/config/initializers/doorkeeper.rb
 
+{{- if $.Values.keycloak.host }}
+        - name: Fix OIDC auto-sign-in provider name
+          kubernetes.core.k8s_exec:
+            namespace: {{ $.Release.Namespace }}
+            pod: '{{ "{{" }} r_gitlab_pod.resources[0].metadata.name {{ "}}" }}'
+            command: >-
+              sed -i 's/auto_sign_in_with_provider: oidc/auto_sign_in_with_provider: openid_connect/' /home/git/gitlab/config/gitlab.yml
+
+        - name: Restart Puma to apply auto-sign-in
+          kubernetes.core.k8s_exec:
+            namespace: {{ $.Release.Namespace }}
+            pod: '{{ "{{" }} r_gitlab_pod.resources[0].metadata.name {{ "}}" }}'
+            command: >-
+              /bin/sh -c "kill -USR2 $(cat /home/git/gitlab/tmp/pids/puma.pid)"
+{{- end }}
+
         - name: Create GitLab OAuth application for DevSpaces
           ansible.builtin.uri:
             url: https://{{ $.Values.gitlab.host }}/api/v4/applications
@@ -539,3 +581,86 @@ data:
             command: '{{ "{{" }} item {{ "}}" }}'
           loop:
             - 'vault kv put kv/secrets/gitlab/devspaces-oauth id={{ "{{" }} r_devspaces_oauth_app.json.application_id {{ "}}" }} secret={{ "{{" }} r_devspaces_oauth_app.json.secret {{ "}}" }}'
+
+{{- if $.Values.keycloak.host }}
+        - name: Retrieve Keycloak admin credentials
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: Secret
+            name: keycloak-initial-admin
+            namespace: keycloak
+          register: r_kc_admin
+          retries: 30
+          delay: 10
+          until:
+            - r_kc_admin.resources | length > 0
+            - r_kc_admin.resources[0].data.username is defined
+
+        - name: Set Keycloak admin credentials
+          set_fact:
+            kc_admin_user: '{{ "{{" }} r_kc_admin.resources[0].data.username | b64decode {{ "}}" }}'
+            kc_admin_pass: '{{ "{{" }} r_kc_admin.resources[0].data.password | b64decode {{ "}}" }}'
+            kc_host: {{ $.Values.keycloak.host }}
+            kc_realm: {{ $.Values.keycloak.realm }}
+
+        - name: Wait for Keycloak to be available
+          ansible.builtin.uri:
+            url: "https://{{ "{{" }} kc_host {{ "}}" }}/realms/{{ "{{" }} kc_realm {{ "}}" }}/.well-known/openid-configuration"
+            validate_certs: false
+          register: r_kc_liveness
+          retries: 30
+          delay: 10
+          until: r_kc_liveness.status == 200
+
+        - name: Get Keycloak admin token
+          ansible.builtin.uri:
+            url: "https://{{ "{{" }} kc_host {{ "}}" }}/realms/master/protocol/openid-connect/token"
+            method: POST
+            body_format: form-urlencoded
+            body:
+              grant_type: password
+              client_id: admin-cli
+              username: "{{ "{{" }} kc_admin_user {{ "}}" }}"
+              password: "{{ "{{" }} kc_admin_pass {{ "}}" }}"
+            validate_certs: false
+          register: r_kc_token
+
+        - name: Set Keycloak token
+          set_fact:
+            kc_token: '{{ "{{" }} r_kc_token.json.access_token {{ "}}" }}'
+
+        - name: Check if GitLab client exists in Keycloak
+          ansible.builtin.uri:
+            url: "https://{{ "{{" }} kc_host {{ "}}" }}/admin/realms/{{ "{{" }} kc_realm {{ "}}" }}/clients?clientId={{ $.Values.keycloak.clientId }}"
+            method: GET
+            headers:
+              Authorization: "Bearer {{ "{{" }} kc_token {{ "}}" }}"
+            validate_certs: false
+          register: r_kc_client_check
+
+        - name: Create GitLab client in Keycloak
+          ansible.builtin.uri:
+            url: "https://{{ "{{" }} kc_host {{ "}}" }}/admin/realms/{{ "{{" }} kc_realm {{ "}}" }}/clients"
+            method: POST
+            headers:
+              Authorization: "Bearer {{ "{{" }} kc_token {{ "}}" }}"
+              Content-Type: application/json
+            body_format: json
+            body:
+              clientId: {{ $.Values.keycloak.clientId }}
+              name: GitLab
+              protocol: openid-connect
+              publicClient: false
+              standardFlowEnabled: true
+              directAccessGrantsEnabled: false
+              secret: {{ $.Values.keycloak.clientSecret }}
+              redirectUris:
+                - "https://{{ $.Values.gitlab.host }}/users/auth/openid_connect/callback"
+              webOrigins:
+                - "https://{{ $.Values.gitlab.host }}"
+            validate_certs: false
+            status_code:
+              - 201
+              - 409
+          when: r_kc_client_check.json | length == 0
+{{- end }}

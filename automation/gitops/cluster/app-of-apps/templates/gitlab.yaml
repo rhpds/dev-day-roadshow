@@ -32,4 +32,10 @@ spec:
           value: {{ .Values.vault.name }}
         - name: vault.namespace
           value: {{ .Values.vault.namespace }}
+        {{- if .Values.gitlab.keycloak }}
+        - name: keycloak.host
+          value: {{ .Values.gitlab.keycloak.host | default (printf "sso.%s" .Values.cluster.subdomain) | quote }}
+        - name: keycloak.clientSecret
+          value: {{ .Values.gitlab.keycloak.clientSecret | quote }}
+        {{- end }}
 {{ include "app-of-apps.syncPolicy" . | indent 2 }}

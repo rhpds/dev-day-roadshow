@@ -21,6 +21,23 @@ data:
   GITLAB_SSH_PORT: "{{ $.Values.gitlab.ssh.port }}"
   GITLAB_TIMEZONE: Berlin
   NGINX_MAX_UPLOAD_SIZE: 100m
+  {{- if .Values.keycloak.host }}
+  OAUTH_ENABLED: "true"
+  OAUTH_ALLOW_SSO: "openid_connect"
+  OAUTH_BLOCK_AUTO_CREATED_USERS: "false"
+  OAUTH_AUTO_LINK_USER: "openid_connect"
+  OAUTH_AUTO_SIGN_IN_WITH_PROVIDER: "oidc"
+  OAUTH_OIDC_LABEL: "SSO Login"
+  OAUTH_OIDC_ISSUER: "https://{{ .Values.keycloak.host }}/realms/{{ .Values.keycloak.realm }}"
+  OAUTH_OIDC_CLIENT_ID: {{ .Values.keycloak.clientId | quote }}
+  OAUTH_OIDC_DISCOVERY: "true"
+  OAUTH_OIDC_SCOPE: "openid profile email"
+  OAUTH_OIDC_RESPONSE_TYPE: "code"
+  OAUTH_OIDC_CLIENT_AUTH_METHOD: "client_secret_post"
+  OAUTH_OIDC_UID_FIELD: "preferred_username"
+  OAUTH_OIDC_SEND_SCOPE_TO_TOKEN_EP: "true"
+  OAUTH_OIDC_REDIRECT_URI: "https://{{ .Values.gitlab.host }}/users/auth/openid_connect/callback"
+  {{- end }}
   REDIS_HOST: gitlab-redis.gitlab.svc
   REDIS_PORT: "6379"
   SMTP_AUTHENTICATION: login

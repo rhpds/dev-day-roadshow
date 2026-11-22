@@ -6,6 +6,9 @@ stringData:
   GITLAB_SECRETS_OTP_KEY_BASE: "{{ $.Values.gitlab.keyBase.otp }}"
   GITLAB_SECRETS_SECRET_KEY_BASE: "{{ $.Values.gitlab.keyBase.secret }}"
   SMTP_PASS: {{ $.Values.gitlab.smtp.password }}
+  {{- if .Values.keycloak.clientSecret }}
+  OAUTH_OIDC_CLIENT_SECRET: {{ .Values.keycloak.clientSecret }}
+  {{- end }}
 kind: Secret
 metadata:
   annotations:
