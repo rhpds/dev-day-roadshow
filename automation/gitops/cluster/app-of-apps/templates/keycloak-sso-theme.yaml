@@ -18,6 +18,7 @@ metadata:
   namespace: keycloak
   annotations:
     argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: ServerSideApply=true
 data:
   custom.css: |
     body#keycloak-bg {
