@@ -36,6 +36,12 @@ spec:
           requests:
             cpu: 250m
             memory: 1Gi
+        {{- if .Values.keycloak.host }}
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/scripts/fix-oidc-provider-name.sh"]
+        {{- end }}
         securityContext:
           privileged: true
         volumeMounts:
