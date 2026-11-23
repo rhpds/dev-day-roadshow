@@ -537,22 +537,6 @@ data:
             command: >-
               sed -i 's/access_token_expires_in 7200/access_token_expires_in 604800/' /home/git/gitlab/config/initializers/doorkeeper.rb
 
-{{- if $.Values.keycloak.host }}
-        - name: Fix OIDC auto-sign-in provider name
-          kubernetes.core.k8s_exec:
-            namespace: {{ $.Release.Namespace }}
-            pod: '{{ "{{" }} r_gitlab_pod.resources[0].metadata.name {{ "}}" }}'
-            command: >-
-              sed -i 's/auto_sign_in_with_provider: oidc/auto_sign_in_with_provider: openid_connect/' /home/git/gitlab/config/gitlab.yml
-
-        - name: Restart Puma to apply auto-sign-in
-          kubernetes.core.k8s_exec:
-            namespace: {{ $.Release.Namespace }}
-            pod: '{{ "{{" }} r_gitlab_pod.resources[0].metadata.name {{ "}}" }}'
-            command: >-
-              /bin/sh -c "kill -USR2 $(cat /home/git/gitlab/tmp/pids/puma.pid)"
-{{- end }}
-
         - name: Create GitLab OAuth application for DevSpaces
           ansible.builtin.uri:
             url: https://{{ $.Values.gitlab.host }}/api/v4/applications
