@@ -194,6 +194,9 @@
     # Check 2: ArgoCD apps are Synced + Healthy
     # =========================================================================
 
+    - name: Wait for initial build pipelines before judging prod health
+      ansible.builtin.import_tasks: tasks/wait-build-pipelines.yml
+
     - name: "Check ArgoCD apps for {{ _tenant_user }}"
       kubernetes.core.k8s_info:
         host: "{{ _k8s_host | default(omit, true) }}"
