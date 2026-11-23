@@ -1,5 +1,6 @@
 external-secrets:
   installCRDs: true
+  concurrent: 10
   securityContext:
     runAsUser: null
   certController:
