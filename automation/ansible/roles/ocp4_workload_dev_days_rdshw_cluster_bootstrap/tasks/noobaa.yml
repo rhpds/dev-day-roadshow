@@ -1,0 +1,86 @@
+---
+- name: Validate NooBaa installation mode
+  ansible.builtin.assert:
+    that:
+      - (ocp4_workload_dev_days_rdshw_noobaa_install | string | lower) in ['auto', 'true', 'false']
+    fail_msg: NooBaa installation mode must be auto, true or false.
+
+- name: Check whether the NooBaa API is installed
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: noobaas.noobaa.io
+  register: r_dev_days_noobaa_crd
+
+- name: Check for an existing NooBaa system
+  kubernetes.core.k8s_info:
+    api_version: noobaa.io/v1alpha1
+    kind: NooBaa
+    namespace: "{{ ocp4_workload_dev_days_rdshw_noobaa_namespace }}"
+    name: "{{ ocp4_workload_dev_days_rdshw_noobaa_name }}"
+  register: r_dev_days_noobaa_system
+  when: r_dev_days_noobaa_crd.resources | length > 0
+
+- name: Check for an existing NooBaa GitOps application
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1alpha1
+    kind: Application
+    namespace: openshift-gitops
+    name: "{{ ocp4_workload_dev_days_rdshw_noobaa_name }}"
+  register: r_dev_days_noobaa_app
+
+- name: Identify a NooBaa application managed by this workshop
+  ansible.builtin.set_fact:
+    r_dev_days_noobaa_managed: >-
+      {{
+        (r_dev_days_noobaa_app.resources | length > 0)
+        and (r_dev_days_noobaa_app.resources[0].spec.source.repoURL
+             == ocp4_workload_dev_days_rdshw_gitops_repo)
+        and (r_dev_days_noobaa_app.resources[0].spec.source.path
+             == 'automation/gitops/cluster/noobaa')
+      }}
+
+- name: Resolve NooBaa installation and backing storage
+  ansible.builtin.set_fact:
+    r_dev_days_noobaa_install: >-
+      {{
+        ((r_dev_days_noobaa_system.resources | default([]) | length == 0)
+         or (r_dev_days_noobaa_managed | bool))
+        if (ocp4_workload_dev_days_rdshw_noobaa_install | string | lower == 'auto')
+        else (ocp4_workload_dev_days_rdshw_noobaa_install | bool)
+      }}
+    r_dev_days_noobaa_storage_class: >-
+      {{
+        ocp4_workload_dev_days_rdshw_noobaa_storage_class
+        | default(
+            'gp3-csi'
+            if (r_api_url.resources[0].status.platformStatus.type | default('') == 'AWS')
+            else 'ocs-external-storagecluster-ceph-rbd',
+            true)
+      }}
+
+- name: Refuse to take over another NooBaa application
+  ansible.builtin.assert:
+    that:
+      - (r_dev_days_noobaa_app.resources | length == 0) or (r_dev_days_noobaa_managed | bool)
+    fail_msg: >-
+      Another GitOps source already owns the NooBaa application. Reuse its system
+      with noobaa_install=false or migrate its ownership explicitly first.
+  when: r_dev_days_noobaa_install | bool
+
+- name: Verify the selected NooBaa backing storage class exists
+  kubernetes.core.k8s_info:
+    api_version: storage.k8s.io/v1
+    kind: StorageClass
+    name: "{{ r_dev_days_noobaa_storage_class }}"
+  register: r_dev_days_noobaa_storage
+  when: r_dev_days_noobaa_install | bool
+
+- name: Require usable backing storage before deploying NooBaa
+  ansible.builtin.assert:
+    that:
+      - r_dev_days_noobaa_storage.resources | length == 1
+    fail_msg: >-
+      NooBaa storage class {{ r_dev_days_noobaa_storage_class }} does not exist.
+      Set ocp4_workload_dev_days_rdshw_noobaa_storage_class to a supported RWO class.
+  when: r_dev_days_noobaa_install | bool

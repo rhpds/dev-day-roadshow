@@ -86,6 +86,14 @@ spec:
           cluster:
             subdomain: {{ r_openshift_subdomain }}
 
+        noobaa:
+          enabled: {{ r_dev_days_noobaa_install | bool | lower }}
+          name: {{ ocp4_workload_dev_days_rdshw_noobaa_name | to_json }}
+          namespace: {{ ocp4_workload_dev_days_rdshw_noobaa_namespace | to_json }}
+          channel: {{ ocp4_workload_dev_days_rdshw_noobaa_channel | to_json }}
+          backingStore:
+            storageClass: {{ r_dev_days_noobaa_storage_class | to_json }}
+
         quay:
           name: {{ ocp4_workload_dev_days_rdshw_quay_application_name }}
           namespace: {{ ocp4_workload_dev_days_rdshw_quay_namespace }}

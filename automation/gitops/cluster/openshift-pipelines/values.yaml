@@ -2,8 +2,8 @@ nameOverride: ""
 
 subscription:
   channel: pipelines-1.22
-  installPlanApproval: Manual
+  installPlanApproval: Automatic
   name: openshift-pipelines-operator-rh
-  source: redhat-operators
+  source: redhat-operators-snapshot
   sourceNamespace: openshift-marketplace
   startingCSV: "openshift-pipelines-operator-rh.v1.22.7"

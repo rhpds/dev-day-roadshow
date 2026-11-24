@@ -1,0 +1,41 @@
+---
+# Sanitize before reporting: raw uri results can contain Authorization headers.
+- name: "LiteLLM check [{{ litellm_check_module }}]: classify inference responses privately"
+  ansible.builtin.set_fact:
+    _lc_plain_report_json: >-
+      {% set report = [] %}
+      {% for response in litellm_check_calls %}
+      {% set choices = response.json.choices | default([]) %}
+      {% set content = choices[0].message.content | default('') if choices | length > 0 else '' %}
+      {% set tokens = response.json.usage.total_tokens | default(0) | int %}
+      {% set valid = response.status | default(0) == 200 and content is string and content | trim | length > 0 and tokens > 0 %}
+      {% set _ = report.append({'call': loop.index, 'status': response.status | default(0),
+         'state': 'PASS' if valid else 'FAIL', 'request_id': response.json.id | default(''),
+         'response_model': response.json.model | default(''), 'total_tokens': tokens,
+         'prompt_tokens': response.json.usage.prompt_tokens | default(0) | int,
+         'completion_tokens': response.json.usage.completion_tokens | default(0) | int,
+         'elapsed_seconds': response.elapsed | default(0) | int}) %}
+      {% endfor %}
+      {{ report | to_json }}
+  no_log: true
+
+- name: "LiteLLM check [{{ litellm_check_module }}]: decode safe inference accounting"
+  ansible.builtin.set_fact:
+    _lc_plain_report: "{{ _lc_plain_report_json | from_json }}"
+
+- name: "LiteLLM check [{{ litellm_check_module }}]: inference result and actual token usage"
+  ansible.builtin.debug:
+    msg:
+      check: LiteLLM check
+      module: "{{ litellm_check_module }}"
+      user: "{{ _tenant_user }}"
+      model: "{{ litellm_check_model }}"
+      observed_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+      calls: "{{ _lc_plain_report }}"
+
+- name: "LiteLLM check [{{ litellm_check_module }}]: require all inference responses and usage"
+  ansible.builtin.assert:
+    that:
+      - _lc_plain_report | length > 0
+      - _lc_plain_report | selectattr('state', 'equalto', 'FAIL') | list | length == 0
+    fail_msg: LiteLLM inference failed, returned empty output, or omitted token usage; see the safe check summary.

@@ -1,7 +1,7 @@
 ---
 site:
   title: OpenShift Dev Day
-  url: https://github.com/rhpds/ocp-dev-days-rdshw-showroom
+  url: https://rhpds.github.io/dev-day-roadshow
   start_page: modules::index.adoc
 
 content:

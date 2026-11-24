@@ -52,5 +52,6 @@ modules:
           description: GitHub Advisory Database
           period: 1d
           source: https://github.com/github/advisory-database
+          transport: git
           path: advisories
           disabled: true

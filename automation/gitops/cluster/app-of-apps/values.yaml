@@ -69,6 +69,16 @@ gitlab:
   cluster:
     subdomain: ""
 
+# The Ansible bootstrap enables this automatically when NooBaa is absent.
+# Keep chart-only installs compatible with CNV pools that already supply it.
+noobaa:
+  enabled: false
+  name: noobaa
+  namespace: openshift-storage
+  channel: stable-4.22
+  backingStore:
+    storageClass: ocs-external-storagecluster-ceph-rbd
+
 quay:
   name: quay
   namespace: quay-registry

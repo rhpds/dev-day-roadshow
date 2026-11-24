@@ -1,0 +1,76 @@
+---
+# Module 2 student workflow simulation. MUTATES a disposable tenant's source,
+# images, attestations and production manifests. See README.md before running.
+# All required outcomes are asserted; expected negative tests are explicit.
+- name: "E2E — Module 2: Secured Software Supply Chain"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Run Module 2 with isolated credentials and guaranteed local cleanup
+      block:
+        - name: Set up QA authentication
+          ansible.builtin.import_tasks: tasks/auth.yml
+
+        - name: Require explicit disposable-tenant consent and student credentials
+          ansible.builtin.assert:
+            that:
+              - module2_allow_mutations | default(false) | bool
+              - _tenant_password | length > 0
+              - _ingress_domain | length > 0
+            fail_msg: >-
+              Module 2 changes source, releases and production. Use a disposable tenant,
+              pass module2_allow_mutations=true, password, and openshift_cluster_ingress_domain.
+
+        - name: Simulate the secured student workflow
+          ansible.builtin.import_tasks: tasks/module2-workflow.yml
+          environment: "{{ _qa_environment }}"
+          module_defaults:
+            kubernetes.core.k8s_info:
+              host: "{{ _k8s_host }}"
+              api_key: "{{ _k8s_api_key }}"
+              validate_certs: "{{ _k8s_validate_certs }}"
+            kubernetes.core.k8s:
+              host: "{{ _k8s_host }}"
+              api_key: "{{ _k8s_api_key }}"
+              validate_certs: "{{ _k8s_validate_certs }}"
+            ansible.builtin.uri:
+              validate_certs: "{{ _k8s_validate_certs }}"
+              timeout: 180
+
+      always:
+        - name: Remove run-owned signing pod and sandbox application
+          ansible.builtin.command:
+            argv:
+              - oc
+              - delete
+              - "{{ item.kind }}"
+              - "{{ _m2_id }}"
+              - -n
+              - "{{ item.namespace }}"
+              - --ignore-not-found
+              - --wait=false
+              - --request-timeout=30s
+          environment: "{{ _qa_environment }}"
+          loop:
+            - {kind: pod, namespace: "{{ _tenant_user }}-secured-build"}
+            - {kind: application, namespace: openshift-gitops}
+          when:
+            - _m2_id is defined
+            - _qa_environment is defined
+          register: _m2_cleanup
+          failed_when: false
+          changed_when: "'deleted' in _m2_cleanup.stdout"
+
+        - name: Warn if temporary resources need manual cleanup
+          ansible.builtin.debug:
+            msg: "Cleanup failed for {{ item.item }}; delete only the run-owned resource {{ _m2_id }}."
+          loop: "{{ _m2_cleanup.results | default([]) }}"
+          when: item.rc | default(0) != 0
+
+        - name: Remove the isolated local kubeconfig
+          ansible.builtin.file:
+            path: "{{ _qa_kubeconfig.path }}"
+            state: absent
+          when: _qa_kubeconfig.path is defined

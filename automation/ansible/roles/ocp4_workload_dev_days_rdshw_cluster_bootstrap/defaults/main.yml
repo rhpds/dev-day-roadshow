@@ -10,6 +10,19 @@ ocp4_workload_dev_days_rdshw_gitops_repo: https://github.com/rhpds/dev-day-roads
 ocp4_workload_dev_days_rdshw_gitops_repo_tag: main
 
 # ------------------------------------------------
+# NooBaa object storage (Quay, TPA and Module 3)
+# ------------------------------------------------
+
+# auto: reuse a preinstalled system, otherwise provision one. Existing systems
+# owned by this role remain managed on subsequent runs. true/false override auto.
+ocp4_workload_dev_days_rdshw_noobaa_install: auto
+ocp4_workload_dev_days_rdshw_noobaa_namespace: openshift-storage
+ocp4_workload_dev_days_rdshw_noobaa_name: noobaa
+# Empty selects gp3-csi on AWS or the existing CNV Ceph RBD class elsewhere.
+ocp4_workload_dev_days_rdshw_noobaa_storage_class: ""
+ocp4_workload_dev_days_rdshw_noobaa_channel: stable-4.22
+
+# ------------------------------------------------
 # GitLab
 # ------------------------------------------------
 

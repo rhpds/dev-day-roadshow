@@ -1,0 +1,21 @@
+---
+- name: "LiteLLM check [{{ _lc_module }}]: Require structured tool selection rather than plain text or a proxy error"
+  ansible.builtin.assert:
+    that:
+      - _lc_first.status | default(0) == 200
+      - _lc_first.json.choices | default([]) | length > 0
+      - _lc_first.json.choices[0].message.tool_calls | default([]) | length == 1
+    fail_msg: "{{ _lc_model }} did not return one structured tool call (HTTP {{ _lc_first.status | default(0) }}, error code {{ _lc_first.json.error.code | default('none') }})."
+
+- name: "LiteLLM check [{{ _lc_module }}]: Decode and scope the model's actual tool call"
+  ansible.builtin.set_fact:
+    _lc_call: "{{ _lc_first.json.choices[0].message.tool_calls[0] }}"
+    _lc_arguments: "{{ _lc_first.json.choices[0].message.tool_calls[0].function.arguments | from_json }}"
+
+- name: "LiteLLM check [{{ _lc_module }}]: Refuse any non-read tool or a different user's namespace"
+  ansible.builtin.assert:
+    that:
+      - _lc_call.type == 'function'
+      - _lc_call.function.name == 'pods_list_in_namespace'
+      - _lc_arguments.namespace | default('') == _lc_namespace
+      - _lc_call.id | default('') | length > 0

@@ -1,0 +1,49 @@
+---
+# Only the initial :1.0 production Deployment rejected for lacking a digest is
+# expected before the release exercise. Never exempt preprod, promoted digests,
+# missing applications, arbitrary Degraded states, RBAC errors or other drift.
+- name: Read the secured production application from the healthcheck snapshot
+  ansible.builtin.set_fact:
+    _m2_startup_prod_app: >-
+      {{ r_argo_checks.results
+         | selectattr('item', 'equalto', _tenant_user ~ '-secured-prod')
+         | map(attribute='resources') | flatten | first | default({}) }}
+    _m2_prod_release_pending: false
+
+- name: Extract failed sync tasks and out-of-sync resources
+  ansible.builtin.set_fact:
+    _m2_startup_sync_failures: >-
+      {{ _m2_startup_prod_app.status.operationState.syncResult.resources | default([])
+         | selectattr('status', 'defined') | selectattr('status', 'equalto', 'SyncFailed') | list }}
+    _m2_startup_drift: >-
+      {{ _m2_startup_prod_app.status.resources | default([])
+         | rejectattr('status', 'equalto', 'Synced') | list }}
+    _m2_startup_other_conditions: >-
+      {{ _m2_startup_prod_app.status.conditions | default([])
+         | rejectattr('type', 'equalto', 'SyncError') | list }}
+
+- name: Recognize only the initial production digest-admission gate
+  ansible.builtin.set_fact:
+    _m2_prod_release_pending: true
+  when:
+    - _m2_startup_prod_app.metadata.name | default('') == _tenant_user ~ '-secured-prod'
+    - _m2_startup_prod_app.spec.destination.namespace | default('') == _tenant_user ~ '-secured-prod'
+    - _m2_startup_prod_app.status.health.status | default('') == 'Degraded'
+    - _m2_startup_prod_app.status.sync.status | default('') == 'OutOfSync'
+    - _m2_startup_prod_app.status.operationState.phase | default('') == 'Failed'
+    - _m2_startup_prod_app.status.sync.revision | default('') | length > 0
+    - _m2_startup_prod_app.status.operationState.syncResult.revision | default('') == _m2_startup_prod_app.status.sync.revision
+    - _m2_startup_prod_app.status.conditions | default([]) | selectattr('type', 'equalto', 'SyncError') | list | length == 1
+    - _m2_startup_sync_failures | length == 1
+    - _m2_startup_drift | length == 1
+    - _m2_startup_other_conditions | length == 0
+    - _m2_startup_sync_failures[0].kind == 'Deployment'
+    - _m2_startup_sync_failures[0].name == 'parasol-insurance'
+    - _m2_startup_drift[0].kind == 'Deployment'
+    - _m2_startup_drift[0].name == 'parasol-insurance'
+    - _m2_startup_drift[0].namespace | default('') == _tenant_user ~ '-secured-prod'
+    - >-
+      _m2_startup_sync_failures[0].message | default('') is match(
+        '^admission webhook "policy[.]rhtas[.]com" denied the request: validation failed: invalid value: '
+        ~ 'quay[.][^ /]+/' ~ (_tenant_user | regex_escape)
+        ~ '/parasol-insurance-secured:1[.]0 must be an image digest: spec[.]template[.]spec[.]containers\[0\][.]image$')

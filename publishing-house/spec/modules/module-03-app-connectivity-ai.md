@@ -57,9 +57,17 @@ A five-lab track that teaches participants to build AI-powered data flows using 
 - Dev Spaces workspace with Camel/Kaoto tooling pre-installed in devfile
 - Kafka (AMQ Streams) pre-deployed on cluster
 - Matrix and Rocket.Chat instances pre-provisioned per participant
-- MaaS endpoint (Qwen3 235b) for AI labs
+- MaaS endpoint using `qwen3-14b` for the Camel support agent, amendment/customer-profile tools, and both Gold/Silver profiles
 - Red Hat Connectivity Link operator installed for Lab 5
 - Service Interconnect configured for cross-namespace database access
+
+### Model Usage
+
+- **Agent/tool model:** `qwen3-14b`, as configured in the workspace solution properties and shown for the Gold/Silver profiles in the guide.
+- **Gold vs Silver:** Both profiles use the same model alias; the difference is API-key identity, token budget and fallback behavior, not a larger model for Gold.
+- **E2E default:** `qwen3-14b`, unless `e2e_module3_litellm_model` overrides it. Its shared OpenShift MCP fixture tests model/tool compatibility, not the complete Node.js/Camel policy-document, HelpDesk and Matrix business flow.
+- Account for every model round before/after tool execution when measuring tokens; a single chat response is not the full agent cost.
+- See the [design model inventory](../design.md#model-usage-and-maas-boundaries) for source references.
 
 ### Content Status
 

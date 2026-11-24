@@ -1,0 +1,28 @@
+---
+- name: Reset the LiteLLM assertion case
+  ansible.builtin.set_fact:
+    _lc_first: "{{ llm_case.first | default(_llm_valid_first) }}"
+    _lc_final: "{{ llm_case.final | default(_llm_valid_final) }}"
+    _lc_rpc: "{{ llm_case.rpc | default({'result': {'isError': false}}) }}"
+    _lc_rpc_result: "{{ llm_case.rpc_result | default({}) }}"
+    _lc_tool_text: "{{ llm_case.tool_text | default('parasol-db-fixture Running') }}"
+    _llm_assertion_failed: false
+
+- name: Exercise the real LiteLLM assertion or protocol decoder
+  block:
+    - name: Invoke the production helper
+      ansible.builtin.include_tasks: "{{ llm_case.helper }}"
+      vars:
+        litellm_check_module: offline
+        litellm_check_model: fixture-model
+        litellm_check_calls: "{{ llm_case.calls | default([]) }}"
+  rescue:
+    - name: Record the expected failed assertion
+      ansible.builtin.set_fact:
+        _llm_assertion_failed: true
+
+- name: "Check LiteLLM regression {{ llm_case.name }}"
+  ansible.builtin.assert:
+    that:
+      - _llm_assertion_failed == (llm_case.must_fail | default(false))
+    fail_msg: "Wrong LiteLLM assertion outcome: {{ llm_case.name }}"

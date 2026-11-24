@@ -228,6 +228,21 @@ data:
           retries: 5
           delay: 5
 
+        - name: Unprotect main branch before mirror push
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2F{{ "{{" }} item {{ "}}" }}/protected_branches/main
+            method: DELETE
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 204
+              - 404
+          loop:
+            - parasol-insurance
+            - parasol-insurance-eap
+            - parasol-insurance-manifests
+
         - name: Import source repos into tenant projects
           ansible.builtin.shell: |
             set -e
@@ -333,6 +348,7 @@ data:
                   - 200
                   - 201
                   - 400
+                  - 409
 
             - name: Remediation — re-unprotect main branch
               ansible.builtin.uri:
@@ -381,6 +397,20 @@ data:
           register: r_create_secured_projects
           retries: 5
           delay: 5
+
+        - name: Unprotect main branch on secured repos before mirror push
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2F{{ "{{" }} item {{ "}}" }}/protected_branches/main
+            method: DELETE
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 204
+              - 404
+          loop:
+            - parasol-insurance-secured
+            - parasol-insurance-secured-manifests
 
         - name: Import secured source repos into tenant projects
           ansible.builtin.shell: |
@@ -506,6 +536,7 @@ data:
                   - 200
                   - 201
                   - 400
+                  - 409
 
             - name: Remediation — re-unprotect main branch on secured repo
               ansible.builtin.uri:

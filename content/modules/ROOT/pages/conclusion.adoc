@@ -1,0 +1,42 @@
+= Conclusion
+include::partial$_attributes.adoc[]
+
+Thank you for taking part in the OpenShift Dev Days Roadshow!
+The modules are independent, so use this recap to reflect on the exercises you completed and choose what to explore next.
+
+== What you explored
+
+* xref:module-01/00-intro.adoc[The developer experience]: Use Developer Hub for self-service onboarding, work in Dev Spaces, review AI-assisted code changes, and follow a feature through CI/CD and GitOps deployment.
+* xref:module-02/00-intro.adoc[Secured Software Supply Chain]: Remediate vulnerabilities, sign commits, inspect pipeline provenance and policy results, obtain release approval, and verify deployment admission controls.
+* xref:module-03/index.adoc[Application connectivity for AI]: Connect data sources and messaging systems, build a tool-enabled Camel agent, and explore authentication, token budgets, and fallback behavior with Connectivity Link.
+* xref:04-module-04-ai-powered-troubleshooting.adoc[AI-powered troubleshooting]: Investigate application symptoms with OpenShift Lightspeed, correlate cluster evidence, request targeted remediation, and build monitoring dashboards.
+* xref:module-05/module-05-01-goals.adoc[AI-powered migration using MTA]: Use static analysis and Developer Lightspeed to review migration patches, apply custom rules, and deploy the completed Quarkus application.
+
+== Putting the pieces together
+
+A developer platform is more than an editor or a deployment command.
+Self-service tools provide a consistent starting point, pipelines produce repeatable build and security evidence, and GitOps connects reviewed changes to the running application.
+Integration and observability make that application useful and diagnosable across services.
+
+AI assistance complements this workflow; it does not replace verification.
+Review generated code before accepting it, inspect the evidence behind a diagnosis, and confirm the outcome in the application or cluster.
+For tool-enabled agents, a plausible answer alone does not prove that the right tool ran or that the requested result was achieved.
+
+== Check your understanding
+
+For the modules you completed, consider these questions:
+
+* Which steps connect a source change to the production deployment, and where can you inspect their results?
+* How do commit identity, image provenance, release approval, and admission policy provide different safeguards?
+* What distinguishes the Gold and Silver profiles when both use the same model, and how do token budgets affect an agent conversation?
+* Which metrics, logs, events, or resource settings support a troubleshooting diagnosis, and how would you verify a proposed fix?
+* How do MTA findings and custom rules guide a migration, and what checks are still needed after accepting an AI-generated patch?
+
+== Next steps
+
+* Revisit the module-specific verification steps and compare their expected outcomes with your own results.
+* Review the source, pipeline, and GitOps changes available in your lab before the temporary environment expires.
+* Apply the same review-and-verify approach to your own development, integration, troubleshooting, and modernization work.
+* Keep lab passwords, API keys, and access tokens out of source code and shared notes.
+
+Return to the xref:index.adoc[workshop home page] to select another module.

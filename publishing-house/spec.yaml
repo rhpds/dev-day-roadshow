@@ -14,7 +14,7 @@ project:
   showroom_type: "classic"
   intake_type: "migration"
   automation_type: "both"
-  description: "Modular hands-on workshop for Red Hat Dev Day events on OpenShift 5. Covers the full developer journey (Developer Hub, Dev Spaces, Pipelines, GitOps), AI-powered application connectivity (Camel, Kafka, Service Interconnect, Connectivity Link, MaaS), and AI-assisted troubleshooting (Lightspeed MCP, Perses dashboards). Browser-only delivery, no prerequisites."
+  description: "Modular hands-on workshop for Red Hat Dev Day events on OpenShift 5. Covers the full developer journey (Developer Hub, Dev Spaces, Pipelines, GitOps), secured software supply chains (RHDA, Sigstore, Chains, ACS, Conforma, signed approvals and admission policies), AI-powered application connectivity (Camel, Kafka, Service Interconnect, Connectivity Link, MaaS), and AI-assisted troubleshooting (Lightspeed MCP, Perses dashboards). Browser-only delivery, no prerequisites."
   # content_reviewer_email and infra_reviewer_email are assigned by the RHDP team — not set by the author
   jira_ticket: "RHDPCD-1116"
   workflow_id: "cdcb57a4-5a1b-487c-b371-2a20218bcd27"
@@ -26,7 +26,7 @@ spec:
     - "Create a cloud development environment using a self-service golden path template and build a REST API feature in Dev Spaces"
     - "Push code through an automated CI/CD pipeline, diagnose SonarQube quality gate failures, and fix code smells with AI assistance"
     - "Deploy a feature to production via GitOps promotion in Argo CD"
-    - "Secure the software supply chain from code to production by implementing automated compliance, security guardrails, and verifiable trust artifacts (SLSA Level 3) using Red Hat Advanced Developer Suite tools"
+    - "Remediate dependency and base-image vulnerabilities, sign commits with Sigstore, inspect Chains/SLSA and ACS evidence in the workshop SLSA Level 3 scenario, and promote an approved release through Conforma, SBOM upload, GitOps and admission controls"
     - "Build Apache Camel integrations for data ingestion with EDI-to-XML transformation and Service Interconnect"
     - "Bridge messaging platforms via Kafka event-driven architecture and build an agentic AI support bot with Camel and MaaS"
     - "Govern LLM access with Red Hat Connectivity Link (API key auth and token rate limiting)"
@@ -34,7 +34,8 @@ spec:
     - "Analyze legacy workloads using the Migration Toolkit for Applications (MTA), accelerate code refactoring with Red Hat Developer Lightspeed, and deploy modern applications to Red Hat OpenShift"
   modules:              # [{id, title, duration_min}] — synced from content/ (source of truth); id is stable
     - {id: module-01, title: "The Developer Experience", duration_min: 85, status: complete}
-    - {id: module-02, title: "The Trusted Build & Security Factory", duration_min: 35, status: not_started}
+    # Module 2 guide: 60–90 min; use the upper bound for planning (75 min of timed exercises plus waits).
+    - {id: module-02, title: "Secured Software Supply Chain", duration_min: 90, status: complete}
     - {id: module-03, title: "App Connectivity for AI", duration_min: 150, status: complete}
     - {id: module-04, title: "AI-Powered Troubleshooting", duration_min: 35, status: complete}
     - {id: module-05, title: "AI-powered migration using MTA", duration_min: 55, status: complete}
@@ -62,9 +63,20 @@ spec:
     # --- Common fields (both platforms) ---
     aap_version: ""                    # required if AAP in products
     ai_requirement: "maas"             # maas | gpu | none
-    ai_model_tier: "open-source"       # open-source | frontier (if ai_requirement = maas or gpu)
-    ai_model_name: "qwen3-235b"        # specific model e.g. granite-3.1-8b
-    ai_justification: ""               # required if ai_model_tier = frontier or ai_requirement = gpu
+    ai_model_tier: "frontier"          # highest tier used by the checked deployment defaults
+    ai_model_name: "claude-sonnet-4-6-a70b" # primary IDE/DLS and Lightspeed deployment default
+    # Multi-model inventory and source links are in spec/design.md; this schema has one primary model field.
+    ai_justification: >-
+      The checked Dev Spaces aiAssistantModel and OpenShift Lightspeed llm.model defaults
+      use claude-sonnet-4-6-a70b. Developer Hub uses that alias for validation/safety;
+      its user-chat selection follows the configured Llama Stack provider/UI. Module 3
+      Camel agents and both Gold/Silver profiles use qwen3-14b. The Module 5 manual
+      provider-recovery example and current Module 1/5 E2E defaults use qwen3-235b,
+      which is not the prefilled IDE/DLS deployment default. Module 2 has no required
+      inference alias. qwen38-27b and claude-opus-5-5-a96b are allowed aliases, not
+      selected defaults in the checked module paths. Event readiness requires the
+      actual selected models, tool-calling support, authorized keys and sufficient
+      shared TPM for all agent rounds. This inventory does not claim capacity validation.
     non_ga_products: []                # list of non-GA products/versions
     non_ga_access_plan: ""             # how access is provided for non-GA products
     external_services:                 # named external service dependencies e.g. [github.com]
@@ -86,7 +98,8 @@ development:
     ansible:
       status: complete
   e2e:
-    status: in_progress
+    # Author-requested implementation tracking; not a blanket live/browser acceptance result.
+    status: complete
   healthCheck:
     status: complete
 
@@ -104,13 +117,13 @@ approval_checklist:
   content:
     prerequisites_verifiable: false
     assessment_strategy: ""
-    catalog_gap: "This is the canonical Dev Day Roadshow workshop for the RH1 2027 initiative, migrated from published.ocp-dev-days-rdshw.prod. It fills a gap for short-format, hands-on customer workshops that sellers and SEs can deliver to increase OpenShift stickiness and demonstrate platform value. The closest catalog item — OpenShift Advanced App Platform Demo — is a demo asset, not a workshop: customers observe rather than participate, limiting its effectiveness for building hands-on confidence. This asset is also the only item in the catalog that includes Red Hat Application Foundations and Red Hat Connectivity Link alongside the core Developer Hub, Dev Spaces, Pipelines, and GitOps stack. Additional differentiators: no prerequisites, browser-only delivery, AI-first approach, and a modular structure designed to grow (secure supply chain, RHAF, and Connectivity Link modules planned)."
-    design_overview: "OpenShift Dev Day Roadshow is a modular, hands-on workshop delivered as part of Red Hat's Dev Day event series, guiding participants through a complete developer journey on the OpenShift application platform. Using a fictional Parasol Insurance scenario, participants explore Red Hat Developer Hub, develop a REST API feature in Dev Spaces, run CI/CD pipelines with quality gates, fix code smells with AI assistance, and deploy to production via GitOps. Additional modules covering secure software supply chain, Red Hat Application Foundation, and Red Hat Connectivity Link are planned."
+    catalog_gap: "This is the canonical Dev Day Roadshow workshop for the RH1 2027 initiative, migrated from published.ocp-dev-days-rdshw.prod. It fills a gap for short-format, hands-on customer workshops that sellers and SEs can deliver to increase OpenShift stickiness and demonstrate platform value. The closest catalog item — OpenShift Advanced App Platform Demo — is a demo asset, not a workshop: customers observe rather than participate, limiting its effectiveness for building hands-on confidence. This asset is also the only item in the catalog that includes Red Hat Application Foundations and Red Hat Connectivity Link alongside the core Developer Hub, Dev Spaces, Pipelines, and GitOps stack. Additional differentiators: no prerequisites, browser-only delivery, AI-first approach, and a modular structure that now includes a secured software supply-chain workflow."
+    design_overview: "OpenShift Dev Day Roadshow is a modular, hands-on workshop delivered as part of Red Hat's Dev Day event series, guiding participants through a complete developer journey on the OpenShift application platform. Using a fictional Parasol Insurance scenario, participants explore Red Hat Developer Hub, develop a REST API feature in Dev Spaces, run CI/CD pipelines with quality gates, fix code smells with AI assistance, and deploy to production via GitOps. Module 2 extends the Parasol story through dependency remediation, keyless commit signing, enforced security checks, signed build provenance, Conforma validation, release approval, SBOM upload and namespace admission controls."
     module_summaries:
       - title: "The Developer Experience"
         overview: "Full inner+outer loop developer journey: explore Developer Hub and Lightspeed, create a Dev Spaces workspace via golden path template, build a Quarkus REST endpoint, push through CI/CD pipeline with SonarQube quality gates, fix code smells with Zoo Code AI assistant, and deploy to production via GitOps/Argo CD."
-      - title: "The Trusted Build & Security Factory"
-        overview: "Participants configure CI/CD pipelines with integrated security checks, generate and verify supply chain provenance artifacts, and utilize developer hub automation to streamline secure deployments. Implements SLSA Level 3 compliance using Red Hat Advanced Developer Suite tools."
+      - title: "Secured Software Supply Chain"
+        overview: "Participants use the secured Parasol component and sandbox to remediate dependency/base-image findings, sign commits through RHTAS, compare informational sandbox checks with enforced MR gates, inspect Chains/SLSA evidence, resolve a Conforma approval failure through signed release approval, inspect the TPA SBOM, promote through a GitOps MR and verify admission enforcement."
       - title: "App Connectivity for AI"
         overview: "Five-lab track covering Apache Camel data ingestion (EDI→XML), Service Interconnect for cross-cluster DB connectivity, Kafka-based messaging bridge (Matrix↔Rocket.Chat), agentic AI support bot with Camel+MaaS and MCP tool calling, and LLM governance via Connectivity Link (API key auth, token rate limiting)."
       - title: "AI-Powered Troubleshooting"

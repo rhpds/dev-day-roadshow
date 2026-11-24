@@ -1,0 +1,11 @@
+---
+- name: "LiteLLM check [{{ _lc_module }}]: Require a final answer grounded in the real tool output and token accounting"
+  ansible.builtin.assert:
+    that:
+      - _lc_final.status | default(0) == 200
+      - _lc_final.json.choices | default([]) | length > 0
+      - _lc_final.json.choices[0].message.content | default('') | length > 0
+      - _lc_expected_pod in _lc_final.json.choices[0].message.content
+      - _lc_first.json.usage.total_tokens | default(0) | int > 0
+      - _lc_final.json.usage.total_tokens | default(0) | int > 0
+    fail_msg: "{{ _lc_model }} failed grounded final-response or usage validation (HTTP {{ _lc_final.status | default(0) }})."

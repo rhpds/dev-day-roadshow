@@ -1,0 +1,109 @@
+---
+# Shared authentication. Never changes the caller's kubeconfig or current context.
+- name: Load optional Showroom user data
+  ansible.builtin.set_fact:
+    _qa_user_data: "{{ lookup('ansible.builtin.file', '/user_data/user_data.yml', errors='ignore') | default('{}', true) | from_yaml }}"
+  no_log: true
+
+- name: Normalize QA inputs and clear facts from earlier module plays
+  ansible.builtin.set_fact:
+    _api_url: "{{ ocp_api_url | default(openshift_api_url | default(_qa_user_data.openshift_api_url | default(''))) }}"
+    _tenant_user: "{{ tenant_user | default(user | default(_qa_user_data.user | default(''))) }}"
+    _ingress_domain: "{{ openshift_cluster_ingress_domain | default(_qa_user_data.openshift_cluster_ingress_domain | default('')) }}"
+    _tenant_password: "{{ password | default(_qa_user_data.password | default('')) }}"
+    _litellm_endpoint: "{{ litellm_api_endpoint | default(_qa_user_data.litellm_api_endpoint | default('')) }}"
+    _litellm_key: "{{ litellm_virtual_key | default(_qa_user_data.litellm_virtual_key | default('')) }}"
+    _k8s_api_key: "{{ ocp_api_token | default('') }}"
+    _k8s_validate_certs: "{{ qa_validate_certs | default(false) | bool }}"
+    e2e_failures: []
+  no_log: true
+
+- name: Validate cluster and tenant inputs
+  ansible.builtin.assert:
+    that:
+      - _api_url is match('^https://')
+      - _tenant_user is match('^[a-z0-9][a-z0-9-]*$')
+    fail_msg: Pass ocp_api_url and tenant_user, or run from the Showroom runner.
+
+- name: Create isolated kubeconfig
+  ansible.builtin.tempfile:
+    state: file
+    suffix: .qa-kubeconfig
+  register: _qa_kubeconfig
+
+- name: Authenticate without modifying the caller's kubeconfig
+  when: ocp_admin_password is defined
+  block:
+    - name: Login using the isolated kubeconfig
+      ansible.builtin.command:
+        argv:
+          - oc
+          - login
+          - "{{ _api_url }}"
+          - --username
+          - "{{ ocp_admin_username | default('admin') }}"
+          - --password
+          - "{{ ocp_admin_password }}"
+          - "--kubeconfig={{ _qa_kubeconfig.path }}"
+          - "--insecure-skip-tls-verify={{ (not (_k8s_validate_certs | bool)) | string | lower }}"
+      changed_when: false
+      no_log: true
+
+    - name: Obtain API token for HTTP and Kubernetes modules
+      ansible.builtin.command:
+        argv: [oc, whoami, -t, "--kubeconfig={{ _qa_kubeconfig.path }}"]
+      register: _qa_login_token
+      changed_when: false
+      no_log: true
+
+    - name: Store API token
+      ansible.builtin.set_fact:
+        _k8s_api_key: "{{ _qa_login_token.stdout | trim }}"
+      no_log: true
+
+- name: Read runtime-automation token in Showroom mode
+  when: _k8s_api_key | length == 0
+  block:
+    - name: Read runtime-automation token using the runner's existing credentials
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        namespace: "{{ _tenant_user }}-showroom"
+        name: runtime-automation-token
+      register: _qa_ra_secret
+      no_log: true
+
+    - name: Require a provisioned runtime-automation token
+      ansible.builtin.assert:
+        that:
+          - _qa_ra_secret.resources | length == 1
+          - _qa_ra_secret.resources[0].data.token | default('') | length > 0
+        fail_msg: runtime-automation-token is missing; pass ocp_api_token or ocp_admin_password.
+      no_log: true
+
+    - name: Store runtime-automation token
+      ansible.builtin.set_fact:
+        _k8s_api_key: "{{ _qa_ra_secret.resources[0].data.token | b64decode }}"
+      no_log: true
+
+- name: Configure isolated authentication for oc and Kubernetes modules
+  ansible.builtin.set_fact:
+    _k8s_host: "{{ _api_url }}"
+    _use_sa_token: true
+    _qa_environment:
+      KUBECONFIG: "{{ _qa_kubeconfig.path }}"
+    _gitlab_url: "https://gitlab-gitlab.{{ _ingress_domain }}"
+    _gitlab_host: "gitlab-gitlab.{{ _ingress_domain }}"
+  no_log: true
+
+- name: Write isolated kubeconfig for subprocesses
+  ansible.builtin.copy:
+    dest: "{{ _qa_kubeconfig.path }}"
+    mode: '0600'
+    content: >-
+      {{ {'apiVersion': 'v1', 'kind': 'Config',
+          'clusters': [{'name': 'qa', 'cluster': {'server': _api_url, 'insecure-skip-tls-verify': not (_k8s_validate_certs | bool)}}],
+          'users': [{'name': 'qa', 'user': {'token': _k8s_api_key}}],
+          'contexts': [{'name': 'qa', 'context': {'cluster': 'qa', 'user': 'qa'}}],
+          'current-context': 'qa'} | to_nice_yaml }}
+  no_log: true

@@ -1,0 +1,11 @@
+---
+- name: Read sandbox template file
+  ansible.builtin.uri:
+    url: "{{ _gitlab_url }}/api/v4/projects/parasol%2Frhdh-templates/repository/files/{{ m2_template_file.path | urlencode | replace('/', '%2F') }}?ref=main"
+    headers: "{{ _m2_gitlab_headers }}"
+    status_code: 200
+  register: _m2_template_file
+  no_log: true
+
+- name: Render the retrieved template content
+  ansible.builtin.include_tasks: module2-render-values.yml

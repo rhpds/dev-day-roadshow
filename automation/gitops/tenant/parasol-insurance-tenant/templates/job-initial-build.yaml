@@ -30,6 +30,15 @@ spec:
             - |
               NAMESPACE="{{ include "parasol-insurance-tenant.prefix" . }}-build"
 
+              echo "Waiting for Tekton pipelines and tasks to be synced..."
+              until oc get pipeline parasol-insurance-push -n ${NAMESPACE} &>/dev/null && \
+                    oc get pipeline parasol-insurance-tag-promote -n ${NAMESPACE} &>/dev/null && \
+                    oc get task sonar-scan -n ${NAMESPACE} &>/dev/null; do
+                echo "  Not ready yet, waiting..."
+                sleep 10
+              done
+              echo "Pipelines and tasks available."
+
               echo "Checking if a PipelineRun already exists..."
               if oc get pipelinerun -n ${NAMESPACE} --no-headers 2>/dev/null | grep -q .; then
                 echo "PipelineRun already exists, skipping initial build."

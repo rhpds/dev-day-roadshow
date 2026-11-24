@@ -1,0 +1,16 @@
+---
+- name: "LiteLLM check [{{ _lc_module }}]: Decode JSON or SSE-framed MCP response"
+  ansible.builtin.set_fact:
+    _lc_rpc: >-
+      {{ _lc_rpc_result.json if _lc_rpc_result.json is defined else
+         ((_lc_rpc_result.content | default('') | regex_findall('(?m)^data:[ \t]*(.+)')
+           | first | default('{}')) | from_json) }}
+  no_log: true
+
+- name: "LiteLLM check [{{ _lc_module }}]: Require a real MCP result rather than a protocol error"
+  ansible.builtin.assert:
+    that:
+      - _lc_rpc_result.status | default(0) == 200
+      - _lc_rpc.result | default(none) is mapping
+      - _lc_rpc.error is not defined
+    fail_msg: "MCP {{ _lc_rpc_method }} did not return a successful result (HTTP {{ _lc_rpc_result.status | default(0) }})."

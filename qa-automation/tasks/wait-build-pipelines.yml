@@ -1,0 +1,69 @@
+---
+# Wait for the initial prod build pipelines to finish before judging prod health.
+#
+# The regular prod app ({{ _tenant_user }}-prod) deploys a Deployment pinned to
+# the parasol-insurance:1.0 image. That image is produced by the initial build
+# pipelines in the {{ _tenant_user }}-build namespace:
+#   - parasol-insurance-push          (builds + pushes the image)
+#   - parasol-insurance-tag-promote   (publishes the :1.0 tag)
+#
+# At tenant order time the prod app can be Synced/Degraded (ImagePullBackOff on
+# :1.0) simply because these pipelines have not finished yet. We wait for them
+# to complete here, so downstream ArgoCD/Deployment checks judge the real state
+# instead of a provisioning-time race.
+#
+# Tekton PipelineRun Succeeded condition status:
+#   Unknown = still running, True = succeeded, False = failed.
+
+- name: "Wait for initial build pipelines to finish for {{ _tenant_user }}"
+  kubernetes.core.k8s_info:
+    host: "{{ _k8s_host | default(omit, true) }}"
+    api_key: "{{ _k8s_api_key | default(omit, true) }}"
+    validate_certs: "{{ _k8s_validate_certs }}"
+    api_version: tekton.dev/v1
+    kind: PipelineRun
+    namespace: "{{ _tenant_user }}-build"
+  register: r_build_pipelineruns
+  retries: "{{ build_pipeline_retries | default(20) }}"
+  delay: "{{ build_pipeline_delay | default(30) }}"
+  no_log: true
+  until: >-
+    (r_build_pipelineruns.resources | default([])
+       | selectattr('spec.pipelineRef.name', 'defined')
+       | selectattr('spec.pipelineRef.name', 'in',
+                    ['parasol-insurance-push', 'parasol-insurance-tag-promote'])
+       | map(attribute='status.conditions', default=[]) | flatten
+       | selectattr('type', 'equalto', 'Succeeded')
+       | selectattr('status', 'equalto', 'Unknown') | list | length) == 0
+
+- name: "Classify initial build pipeline results for {{ _tenant_user }}"
+  ansible.builtin.set_fact:
+    _build_runs: >-
+      {{ r_build_pipelineruns.resources | default([])
+         | selectattr('spec.pipelineRef.name', 'defined')
+         | selectattr('spec.pipelineRef.name', 'in',
+                      ['parasol-insurance-push', 'parasol-insurance-tag-promote'])
+         | list }}
+
+- name: "Record failed initial build pipelines for {{ _tenant_user }}"
+  ansible.builtin.set_fact:
+    healthcheck_failures: >-
+      {{ healthcheck_failures +
+         ['Build pipeline ' ~ _tenant_user ~ '-build/' ~ item.metadata.name ~
+          ' did not succeed (' ~
+          (item.status.conditions | default([]) | selectattr('type', 'equalto', 'Succeeded')
+             | map(attribute='status') | first | default('Unknown')) ~ ')'] }}
+  loop: "{{ _build_runs }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+  when:
+    - healthcheck_phase == 'pre_exercise'
+    - (item.status.conditions | default([]) | selectattr('type', 'equalto', 'Succeeded')
+       | map(attribute='status') | first | default('Unknown')) == 'False'
+
+- name: "Report missing initial build pipelines for {{ _tenant_user }}"
+  ansible.builtin.debug:
+    msg: >-
+      WARN — {{ _tenant_user }}-build: no parasol-insurance-push / parasol-insurance-tag-promote
+      PipelineRun found. The prod :1.0 image may not have been built; prod health is checked normally.
+  when: _build_runs | length == 0

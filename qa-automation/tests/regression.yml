@@ -1,0 +1,323 @@
+---
+# Offline tests. These invoke the SAME assertion helpers used by Module 2 E2E.
+- name: QA assertion regressions (no cluster or credentials required)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    _success:
+      metadata: {name: current-run, namespace: example-secured-build}
+      spec:
+        params: [{name: git-revision, value: current-sha}]
+      status:
+        conditions: [{type: Succeeded, status: 'True'}]
+    _failed:
+      metadata: {name: failed-run, namespace: example-secured-build}
+      spec:
+        params: [{name: git-revision, value: current-sha}]
+      status:
+        conditions: [{type: Succeeded, status: 'False'}]
+    _stale:
+      metadata: {name: stale-run, namespace: example-secured-build}
+      spec:
+        params: [{name: git-revision, value: old-sha}]
+      status:
+        conditions: [{type: Succeeded, status: 'True'}]
+  tasks:
+    - name: Test correlation and fail-closed pipeline outcomes
+      ansible.builtin.include_tasks: case.yml
+      loop:
+        - name: current-success
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs: {resources: ["{{ _success }}", "{{ _stale }}"]}
+        - name: current-failure
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs: {resources: ["{{ _failed }}"]}
+          must_fail: true
+        - name: expected-negative-pipeline
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs: {resources: ["{{ _failed }}"]}
+          expected_status: 'False'
+        - name: unrelated-old-success
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs: {resources: ["{{ _stale }}"]}
+          must_fail: true
+        - name: no-pipeline
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs: {resources: []}
+          must_fail: true
+        - name: ambiguous-pipelines
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs: {resources: ["{{ _success }}", "{{ _success }}"]}
+          must_fail: true
+        - name: missing-condition
+          helper: ../tasks/module2-assert-pipeline.yml
+          runs:
+            resources:
+              - metadata: {name: incomplete, namespace: example-secured-build}
+                spec:
+                  params: [{name: git-revision, value: current-sha}]
+                status: {}
+          must_fail: true
+      loop_control:
+        loop_var: qa_case
+        label: "{{ qa_case.name }}"
+
+    - name: Test admission failures are policy-specific, not generic errors
+      ansible.builtin.include_tasks: case.yml
+      loop:
+        - name: approved-image-allowed
+          helper: ../tasks/module2-assert-admission.yml
+          admission: {rc: 0, stderr: ''}
+        - name: unsigned-image-denied
+          helper: ../tasks/module2-assert-admission.yml
+          admission:
+            rc: 1
+            stderr: 'failed policy: parasol-image-signature-required; failed policy: parasol-signed-commit-required; failed policy: parasol-release-approval-required'
+          required: [parasol-image-signature-required, parasol-signed-commit-required, parasol-release-approval-required]
+        - name: signed-unapproved-image-denied-for-approval-only
+          helper: ../tasks/module2-assert-admission.yml
+          admission: {rc: 1, stderr: 'failed policy: parasol-release-approval-required'}
+          required: [parasol-release-approval-required]
+          forbidden: [parasol-image-signature-required, parasol-signed-commit-required]
+        - name: generic-rbac-error-is-not-a-pass
+          helper: ../tasks/module2-assert-admission.yml
+          admission: {rc: 1, stderr: 'Error from server (Forbidden): pods is forbidden'}
+          required: [parasol-release-approval-required]
+          must_fail: true
+        - name: webhook-timeout-is-not-a-pass
+          helper: ../tasks/module2-assert-admission.yml
+          admission: {rc: 1, stderr: 'failed calling webhook: context deadline exceeded'}
+          required: [parasol-release-approval-required]
+          must_fail: true
+        - name: registry-error-wrapped-in-policy-denial-is-not-a-pass
+          helper: ../tasks/module2-assert-admission.yml
+          admission:
+            rc: 1
+            stderr: 'failed policy: parasol-release-approval-required: MANIFEST_UNKNOWN'
+          required: [parasol-release-approval-required]
+          must_fail: true
+        - name: unsigned-image-accepted-is-a-failure
+          helper: ../tasks/module2-assert-admission.yml
+          admission: {rc: 0, stderr: ''}
+          required: [parasol-image-signature-required]
+          must_fail: true
+        - name: missing-signature-is-not-approval-only
+          helper: ../tasks/module2-assert-admission.yml
+          admission:
+            rc: 1
+            stderr: 'failed policy: parasol-release-approval-required; failed policy: parasol-image-signature-required'
+          required: [parasol-release-approval-required]
+          forbidden: [parasol-image-signature-required]
+          must_fail: true
+        - name: approved-image-rejected-is-a-failure
+          helper: ../tasks/module2-assert-admission.yml
+          admission: {rc: 1, stderr: 'failed policy: parasol-release-approval-required'}
+          must_fail: true
+      loop_control:
+        loop_var: qa_case
+        label: "{{ qa_case.name }}"
+
+    - name: Test immutable admission inputs and exact preprod rollout checks
+      ansible.builtin.include_tasks: case.yml
+      loop:
+        - name: immutable-admission-input
+          helper: ../tasks/module2-assert-image.yml
+          image: "{{ 'registry.example/test@sha256:' ~ ('a' * 64) }}"
+        - name: tagged-admission-input-is-rejected-before-testing
+          helper: ../tasks/module2-assert-image.yml
+          image: registry.example/test:latest
+          must_fail: true
+        - name: malformed-digest-is-rejected
+          helper: ../tasks/module2-assert-image.yml
+          image: registry.example/test@sha256:short
+          must_fail: true
+        - name: preprod-running-the-current-digest
+          helper: ../tasks/module2-assert-preprod.yml
+          pods:
+            resources:
+              - status:
+                  containerStatuses:
+                    - {name: parasol-insurance, ready: true, imageID: "{{ 'registry.example/test@sha256:' ~ ('a' * 64) }}"}
+        - name: old-ready-preprod-is-not-the-new-release
+          helper: ../tasks/module2-assert-preprod.yml
+          pods:
+            resources:
+              - status:
+                  containerStatuses:
+                    - {name: parasol-insurance, ready: true, imageID: "{{ 'registry.example/test@sha256:' ~ ('b' * 64) }}"}
+          must_fail: true
+        - name: unready-current-preprod-is-not-a-pass
+          helper: ../tasks/module2-assert-preprod.yml
+          pods:
+            resources:
+              - status:
+                  containerStatuses:
+                    - {name: parasol-insurance, ready: false, imageID: "{{ 'registry.example/test@sha256:' ~ ('a' * 64) }}"}
+          must_fail: true
+        - name: missing-preprod-is-not-a-pass
+          helper: ../tasks/module2-assert-preprod.yml
+          pods: {resources: []}
+          must_fail: true
+        - name: unrelated-ready-sidecar-is-not-a-pass
+          helper: ../tasks/module2-assert-preprod.yml
+          pods:
+            resources:
+              - status:
+                  containerStatuses:
+                    - {name: sidecar, ready: true, imageID: "{{ 'registry.example/test@sha256:' ~ ('a' * 64) }}"}
+          must_fail: true
+      loop_control:
+        loop_var: qa_case
+        label: "{{ qa_case.name }}"
+
+    - name: Test Module 1 statistics failures cannot be silently accepted
+      ansible.builtin.include_tasks: case.yml
+      loop:
+        - name: valid-seeded-statistics
+          helper: ../tasks/module1-assert-stats.yml
+          stats:
+            status: 200
+            json: {total: 3, by_category: {auto: 2, home: 1}, by_status: {open: 3}}
+        - name: stats-404-must-fail
+          helper: ../tasks/module1-assert-stats.yml
+          stats: {status: 404}
+          must_fail: true
+        - name: empty-stats-must-fail
+          helper: ../tasks/module1-assert-stats.yml
+          stats: {status: 200, json: {}}
+          must_fail: true
+        - name: empty-seed-data-must-fail
+          helper: ../tasks/module1-assert-stats.yml
+          stats:
+            status: 200
+            json: {total: 0, by_category: {}, by_status: {}}
+          must_fail: true
+        - name: inconsistent-breakdowns-must-fail
+          helper: ../tasks/module1-assert-stats.yml
+          stats:
+            status: 200
+            json: {total: 3, by_category: {auto: 2}, by_status: {open: 3}}
+          must_fail: true
+      loop_control:
+        loop_var: qa_case
+        label: "{{ qa_case.name }}"
+
+    - name: Read the current Module 1 exercise code blocks
+      ansible.builtin.set_fact:
+        _m1_guide: >-
+          {{ lookup('ansible.builtin.file', lookup('ansible.builtin.first_found',
+             [playbook_dir ~ '/../../content/modules/ROOT/pages/module-01/02-developer-experience.adoc',
+              '/showroom/repo/content/modules/ROOT/pages/module-01/02-developer-experience.adoc'])) }}
+
+    - name: Extract the exercise's source fixtures
+      ansible.builtin.set_fact:
+        _m1_documented_java: >-
+          {{ _m1_guide | regex_findall('(?s)\[source,java,role="copypaste"\]\n----\n(.*?)\n----') }}
+
+    - name: Require the test fixtures to match the actual exercise
+      ansible.builtin.assert:
+        that:
+          - _m1_documented_java | length == 2
+          - (_m1_documented_java[0] | trim) == (lookup('ansible.builtin.file', playbook_dir ~ '/../fixtures/module1/ClaimsStatsResource.initial.java') | trim)
+          - (_m1_documented_java[1] | trim) == (lookup('ansible.builtin.file', playbook_dir ~ '/../fixtures/module1/ClaimsStatsResource.fixed.java') | trim)
+
+    - name: Require the full streamed suite to opt into its documented mutations
+      ansible.builtin.assert:
+        that:
+          - >-
+            (lookup('ansible.builtin.file', playbook_dir ~ '/../e2e.yml') | from_yaml
+             | selectattr('name', 'search', 'Module 2:')
+             | first).vars.module2_allow_mutations | bool
+
+    - name: Test current and legacy Conforma report shapes without weakening approval checks
+      ansible.builtin.include_tasks: case.yml
+      loop:
+        - name: current-conforma-metadata-code
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma:
+            success: false
+            components:
+              - violations: [{msg: 'No release approval attestation found', metadata: {code: release_approval.approval_present}}]
+                warnings: [{metadata: {code: vulnerability_summary}}, {metadata: {code: sonarqube_highlights}}]
+        - name: legacy-conforma-top-level-code
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma:
+            success: false
+            components:
+              - violations: [{code: release_approval.approval_present}]
+        - name: extra-conforma-security-violation-is-not-approval-only
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma:
+            success: false
+            components:
+              - violations: [{metadata: {code: release_approval.approval_present}}, {metadata: {code: commit_signature.commit_is_signed}}]
+          must_fail: true
+        - name: unknown-conforma-violation-must-fail
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma:
+            success: false
+            components:
+              - violations: [{msg: 'No release approval attestation found'}]
+          must_fail: true
+        - name: successful-report-is-not-the-expected-negative-test
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma:
+            success: true
+            components:
+              - violations: [{metadata: {code: release_approval.approval_present}}]
+          must_fail: true
+        - name: failed-report-without-rule-evidence-must-fail
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma: {success: false, components: []}
+          must_fail: true
+        - name: conflicting-conforma-codes-must-fail
+          helper: ../tasks/module2-assert-conforma-unapproved.yml
+          conforma:
+            success: false
+            components:
+              - violations: [{code: commit_signature.commit_is_signed, metadata: {code: release_approval.approval_present}}]
+          must_fail: true
+      loop_control:
+        loop_var: qa_case
+        label: "{{ qa_case.name }}"
+
+    - name: Read the Module 2 admission fixture sequence
+      ansible.builtin.set_fact:
+        _m2_fixture_workflow: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../tasks/module2-workflow.yml') }}"
+
+    - name: Require post-merge pipeline provenance before approval-only admission testing
+      ansible.builtin.assert:
+        that:
+          - "'Require the post-merge secured build to succeed' in _m2_fixture_workflow"
+          - "'Wait for Chains to attach post-merge provenance' in _m2_fixture_workflow"
+          - _m2_fixture_workflow.find('Require the post-merge secured build to succeed') < _m2_fixture_workflow.find('Reject the signed but unapproved post-merge image for approval only')
+          - _m2_fixture_workflow.find('Wait for Chains to attach post-merge provenance') < _m2_fixture_workflow.find('Reject the signed but unapproved post-merge image for approval only')
+          - _m2_fixture_workflow.find('Reject the signed but unapproved post-merge image for approval only') < _m2_fixture_workflow.find('Submit a real signed release approval')
+          - "'_m2_mr_image' not in _m2_fixture_workflow"
+
+    - name: Supply an unsafe Backstage template as returned by the GitLab API
+      ansible.builtin.set_fact:
+        _m2_template_open: !unsafe '${{'
+        _m2_template_path: templates/example/
+        _m2_template_actions: []
+        _m2_template_values: {owner: test-user, branch: e2e-example}
+        _m2_template_file:
+          json:
+            content: !unsafe bmFtZTogJHt7IHZhbHVlcy5vd25lciB9fS0ke3sgdmFsdWVzLmJyYW5jaCB9fQ==
+        m2_template_file: {path: templates/example/helm/Chart.yaml}
+
+    - name: Render the actual sandbox template helper offline
+      ansible.builtin.include_tasks: ../tasks/module2-render-values.yml
+
+    - name: Verify Backstage variables were replaced without evaluating them as Ansible
+      ansible.builtin.assert:
+        that:
+          - "_m2_template_actions[0].content == 'name: test-user-e2e-example'"
+          - _m2_template_actions[0].file_path == 'helm/Chart.yaml'
+
+    - name: Progressing is an expected readiness state, not an automatic failure
+      ansible.builtin.assert:
+        that:
+          - "'Progressing' in ['Healthy', 'Progressing']"
+          - "'Degraded' not in ['Healthy', 'Progressing']"

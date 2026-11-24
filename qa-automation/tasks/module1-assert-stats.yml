@@ -1,0 +1,13 @@
+---
+- name: Require a real statistics payload matching seeded claims
+  ansible.builtin.assert:
+    that:
+      - _m1_stats.status | default(0) == 200
+      - _m1_stats.json | default({}) is mapping
+      - _m1_stats.json.total | default(0) is number
+      - _m1_stats.json.total | default(0) > 0
+      - _m1_stats.json.by_category | default(none) is mapping
+      - _m1_stats.json.by_status | default(none) is mapping
+      - _m1_stats.json.by_category.values() | list | sum == _m1_stats.json.total
+      - _m1_stats.json.by_status.values() | list | sum == _m1_stats.json.total
+    fail_msg: Claims statistics must contain a positive total and consistent category/status counts.

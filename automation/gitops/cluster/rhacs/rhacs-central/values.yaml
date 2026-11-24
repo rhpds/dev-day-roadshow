@@ -8,6 +8,14 @@ vault:
   podName: vault-0
   secretPath: kv/secrets/rhacs/api-token
 
+scannerV4:
+  matcher:
+    resources:
+      limits:
+        memory: 5Gi
+      requests:
+        memory: 1536Mi
+
 syncwave:
   namespace: "-1"
   tlsCertJob: "0"

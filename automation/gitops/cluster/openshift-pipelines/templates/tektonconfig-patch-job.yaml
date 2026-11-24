@@ -86,6 +86,20 @@ spec:
                 -p '{"spec":{"pipeline":{"coschedule":"pipelineruns"}}}'
               echo "Pipeline config patched"
 
+              # Disable Results API auth. The default auth mode rejects
+              # non-admin OAuth tokens, breaking the Pipelines console
+              # overview page for workshop users. The console proxy
+              # still handles user authentication.
+              oc get cm tekton-results-api-config -n openshift-pipelines -o json | \
+                python3 -c "
+              import sys, json
+              d = json.load(sys.stdin)
+              d['data']['config'] = d['data']['config'].replace('AUTH_DISABLE=false', 'AUTH_DISABLE=true')
+              json.dump(d, sys.stdout)
+              " | oc replace -f -
+              oc delete pod -n openshift-pipelines -l app.kubernetes.io/name=tekton-results-api --wait=false
+              echo "Results API auth disabled"
+
               # Configure Tekton Chains for keyless signing via TAS Fulcio/Rekor.
               # The Chains controller uses its projected SA token (audience:
               # trusted-artifact-signer) to obtain a short-lived signing cert
@@ -118,6 +132,13 @@ spec:
               # The operator hardcodes "sigstore" but TAS Fulcio requires
               # "trusted-artifact-signer" as the audience.
               echo "Patching Chains InstallerSets..."
+
+              echo "Waiting for Chains InstallerSets to be created..."
+              until oc get tektoninstallersets --no-headers | grep "^chain-" | grep -v "config\|secret" | grep -q .; do
+                echo "  Chains InstallerSets not ready yet, waiting..."
+                sleep 10
+              done
+              echo "Chains InstallerSets available."
 
               # Patch the Deployment InstallerSet: OIDC audience
               CHAIN_IS=$(oc get tektoninstallersets --no-headers | grep "^chain-" | grep -v "config\|secret" | awk '{print $1}')

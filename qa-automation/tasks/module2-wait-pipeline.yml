@@ -1,0 +1,23 @@
+---
+# Match the current commit/tag, never a pre-existing successful build.
+- name: "Wait for {{ _m2_pipeline }} for {{ _m2_run_param.value }}"
+  kubernetes.core.k8s_info:
+    api_version: tekton.dev/v1
+    kind: PipelineRun
+    namespace: "{{ _m2_pipeline_namespace }}"
+    label_selectors:
+      - "tekton.dev/pipeline={{ _m2_pipeline }}"
+  register: _m2_runs
+  until: >-
+    _m2_runs.resources
+    | selectattr('spec.params', 'contains', _m2_run_param)
+    | selectattr('status.conditions', 'defined')
+    | selectattr('status.conditions')
+    | selectattr('status.conditions.0.type', 'equalto', 'Succeeded')
+    | selectattr('status.conditions.0.status', 'in', ['True', 'False'])
+    | list | length == 1
+  retries: "{{ module2_pipeline_retries | default(120) }}"
+  delay: "{{ module2_pipeline_delay | default(20) }}"
+
+- name: Validate the correlated PipelineRun outcome
+  ansible.builtin.include_tasks: module2-assert-pipeline.yml

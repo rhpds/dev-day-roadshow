@@ -87,7 +87,7 @@ image::agentic-troubleshooting-mode-selector.png[Lightspeed troubleshooting mode
 +
 [source,subs="attributes",role="copypaste"]
 ----
-Investigate the timeout connection issue in the {user}-parasol-web namespace.
+Investigate the timeout connection issue in the {user}-parasol-web namespace. Don't make any changes just yet!
 ----
 +
 Lightspeed will query your cluster via MCP -- examining pods, services, network policies, and logs -- to identify the root cause.

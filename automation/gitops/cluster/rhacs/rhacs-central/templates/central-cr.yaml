@@ -17,3 +17,10 @@ spec:
         - name: rhacs-tenant-config
       secrets:
         - name: rhacs-declarative-auth
+  scannerV4:
+    matcher:
+      resources:
+        limits:
+          memory: {{ .Values.scannerV4.matcher.resources.limits.memory }}
+        requests:
+          memory: {{ .Values.scannerV4.matcher.resources.requests.memory }}

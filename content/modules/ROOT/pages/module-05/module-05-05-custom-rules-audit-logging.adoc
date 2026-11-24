@@ -42,7 +42,7 @@ The JARs and POMs live under `lib/repository/`. The application currently declar
 
 == Exercise 1: Explore the custom rules
 
-Open xref:module-05/module-05-logging.adoc[logging.yaml] to **download** or **copy** the content into `parasol-insurance-eap/rules/logging.yaml` in Dev Spaces (create the `rules/` directory if it is not already there).
+Open xref:module-05/module-05-logging.adoc[logging.yaml] to **download** the file to your local drive.
 
 Skim each `ruleID`, `when:` clause, and `message:` in `logging.yaml` — these are what the analyzer will report in the Analysis panel. The file defines **five** rules (`audit-logging-0001` … `audit-logging-0005`).
 
@@ -79,27 +79,27 @@ Also open `pom.xml` and find the dependency on `audit-logging-library` version `
 
 == Exercise 2: Attach the custom rules to an MTA profile
 
-Earlier you configured the MTA extension and you might have noticed that there is also an option to add custom rules in our analysis. Lets get started with adding custom rules to our `quarkus-profile`.
+Earlier you configured the MTA extension and you might have noticed that there is also an option to add custom rules in our analysis. Let's get started with adding custom rules to our `quarkus-profile`.
 
 . Open the MTA Analysis View. Click the **gear** icon (1), then under **Select Profile** click **Edit in Profile Manager** (2).
 +
 image::module-05-mta-dls/05-05-dls-01.jpg[Open Profile Manager from Get Ready to Analyze,link=self,window=blank,title="Edit in Profile Manager"]
 
-. Let's attach customer rules to our `quarkus-profile`
+. Let's attach custom rules to our `quarkus-profile`.
 
 . In **Profile Settings**, set the migration target consistent with this workshop (Quarkus / the same target family used by `quarkus-profile`). Custom rules in this repo are labeled toward a Quarkus 3-style target.
 
-. Under **Custom Rules**, click **Upload Custom Rules...** and upload the xref:module-05/module-05-logging.adoc[`logging.yaml`] file you saved locally (or point the profile at the project's `rules/` directory that contains `logging.yaml`).
+. Under **Custom Rules**, click **Upload Custom Rules...** and upload the xref:module-05/module-05-logging.adoc[`logging.yaml`] file you downloaded earlier.
 +
 image::module-05-mta-dls/05-05-dls-02.jpg[Upload Custom Rules in Profile Settings,link=self,window=blank,title="Custom Rules"]
 
-. Activate the profile so it is the one used for the next analysis run.
+. Since we only have one profile `quarkus-profile`, it should already be (active). 
 
 IMPORTANT: If you only run `quarkus-profile` without the custom rules path or upload, you will still see Java EE → Quarkus findings (MDB, EJB, and so on), but you will **miss** the audit library incidents. Custom rules and stock rules complement each other.
 
 == Exercise 3: Run analysis and inspect custom findings
 
-. Congratulations on completing exercise 3! now it's time to run analysis. Since we are using the same active profile as before `quarkus-profile`. head to the analysis panel again and run the analysis.
+. Congratulations on completing exercise 3! now it's time to run analysis. Since we are using the same active profile as before `quarkus-profile`. head to the analysis panel again and run the analysis. The server would have already stopped. This is by design — when you change a profile, the server stops so it can pick up the changes on restart. Press `Start` button to start the server and then run the `Analysis` again.
 
 . When the Analysis panel populates, filter or search for findings related to **audit** / **`Audit`**. Expand incidents and confirm you can map them back to the rule IDs you read in `logging.yaml`. At minimum you should see a **dependency** finding for `audit-logging-library` **1.0.0** in `pom.xml` (rule `audit-logging-0001`).
 
@@ -121,7 +121,7 @@ image::module-05-mta-dls/05-05-dls-06.jpg[Review AuditEvent migration patch,link
 
 NOTE: Read each finding **message** carefully. Notice how the rule text is written for humans *and* for Developer Lightspeed: clear intent (“upgrade to 2.0.0”, “use `logEventAsync`”, and so on) without requiring the model to invent Parasol policy from scratch. Custom-library upgrades can imply Java level and API changes beyond a single version number — review diffs before accepting.
 
-== What we learnt
+== What we learned
 
 * **Gap in stock rules:** Public Quarkus / Java EE rulesets do not understand proprietary libraries such as `audit-logging-library`.
 * **Custom rules structure:** Rule files such as `logging.yaml` use `when:` conditions and actionable `message:` text that MTA (and Developer Lightspeed) can act on.
