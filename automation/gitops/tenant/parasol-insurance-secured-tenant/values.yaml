@@ -25,6 +25,8 @@ resourceQuota:
   limits:
     cpu: "4"
     memory: 8Gi
+  buildLimits:
+    cpu: "6"
   requests:
     cpu: "4"
     memory: 8Gi
