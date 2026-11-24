@@ -614,6 +614,8 @@ Your changes are now merged into the main branch. To see the dev environment pip
 
 image::rhdh-dev-merge-build.png[Pipeline Run triggered after merging our MR,link=self,window=blank,width=700]
 
+Before creating a release tag, open the **CI** tab of that primary **Parasol Insurance** component. Wait for the new `parasol-insurance-push` pipeline run from your merge to show **Succeeded**. If it fails or stays pending, open the run details and ask the instructor for help. Do not create the tag until the build succeeds.
+
 === Exercise 2: Create a release tag
 
 In a real organization, promoting code to production is typically handled by platform engineers or release managers. For this workshop, you will perform this step yourself to see the full end-to-end flow.

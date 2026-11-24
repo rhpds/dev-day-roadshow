@@ -77,6 +77,8 @@ This triggers the **post-merge build pipeline** -- the **__final image__** is bu
 +
 image::m02-rhdh-post-merge-pipeline.png[Post-merge build pipeline in Developer Hub,link=self,window=blank,width=700]
 
+Before creating a tag, open the **Parasol Insurance (Secured)** component in Developer Hub and select its **CI** tab. Wait for the `parasol-insurance-secured-push` pipeline run from your merge to show **Succeeded**. If it fails or stays pending, open the run details and ask the instructor for help. Do not create the tag until the build succeeds.
+
 '''
 
 [#section-2]
