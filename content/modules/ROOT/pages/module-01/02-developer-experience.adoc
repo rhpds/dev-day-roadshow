@@ -57,17 +57,17 @@ This is the Parasol Insurance application system. It groups all the components, 
 
 . Explore the system view:
 * Notice the components registered under this system
-* Look at the dependency relationships between components
-* Click on a component to see its detail page
+* Look at the dependency relationships between Components, APIs, and Resources (the LLM Inference Server)
+* Click on the **Parasol Insurance** component in the **Relations** graphic
++
+image::rhdh-component-detail.png[System Relations graphic showing components, APIs, and resources,link=self,window=blank,width=700]
 
 . On the component detail page, explore the tabs:
 * **Overview** -- ownership, lifecycle, and system information
 * **API** -- provided and consumed API definitions
-* **Relations** -- what this component depends on and what depends on it
-+
-image::rhdh-component-detail.png[Component detail page with Overview and CI/CD tabs,link=self,window=blank,width=700]
+* **Dependencies > Relations** -- what this component depends on and what depends on it
 
-. On the **API** tile, find the **parasol-insurance-api**. Click on it, then select the **Definition** tab.
+. On the **API** tab, find the **Parasol Insurance API**. Click on it, then select the **Definition** tab.
 +
 The API documentation is rendered directly from the source repository. When the code changes, the docs stay current automatically -- no separate wiki to maintain.
 +
@@ -166,6 +166,8 @@ Password:
 --
 +
 Take a look at the repository -- this is the branch where your changes will live until you merge them.
++
+image::gitlab-claims-stats-branch.png[Claims stats feature branch in GitLab,link=self,window=blank,width=700]
 
 === Verify
 
@@ -190,19 +192,19 @@ Alternatively, you can open Dev Spaces directly at {devspaces_url}[{devspaces_ur
 +
 image::rhdh-devspaces-link.png[Link to open pre-configured Dev Spaces seen in Red Hat Developer Hub,link=self,window=blank,width=700]
 
-. The first time Dev Spaces opens, click **Log In With OpenShift**. You will see several authorization prompts. These are security gates that ensure the IDE only acts with your explicit consent:
+. The first time Dev Spaces opens, click **Log In With OpenShift**. You will see several authorization prompts. These are security gates that ensure the IDE only acts with your explicit consent and using your identity:
 
 .. **Authorize access to OpenShift** -- click **Allow selected permissions**
 .. **Do you trust the authors of this repository?** -- click **Continue**
 .. **GitLab login** -- log in with your credentials if needed (username: `{user}`, password: `{password}`)
 .. **GitLab Authorization** -- click **Authorize** to give DevSpaces permission to open your branch (if you wait too long here, you may need to click **Retry** to try again after giving permission)
 
-. Once the workspace loads, take a moment to explore:
+. Once the workspace loads, take a moment to explore and accept the popups for extension installation and trusting the workspace:
 .. **Trust the workspace files** -- click **Yes, I trust the authors**
 .. **Trust publishers and install** -- click to install the recommended extensions including the AI coding assistant
 .. Dismiss any popups about MicroProfile or Dependency Analytics by clicking the **X**
 +
-WARNING: If you miss the "trust the authors" prompt, Dev Spaces opens in Restricted Mode and you will see a highlighted banner at the bottom of the window. Click the banner to confirm trust so extensions load properly.
+WARNING: If you miss the "trust the authors" prompt, Dev Spaces opens in Restricted Mode and you will see a highlighted banner at the top of the window. Click the banner to confirm trust so extensions load properly.
 +
 * The file explorer shows the complete project structure
 * The terminal has CLI tools pre-installed (`oc`, `mvn`, etc.)
@@ -222,6 +224,8 @@ Before writing new code, start the application to see what you are working with.
 . Select the **devfile** task group.
 
 . Select **Start Development Mode (Hot Reload + debug)**.
++
+image::devspaces-run-task.png[Select the Start Development Mode task in Dev Spaces,link=self,window=blank,width=700]
 
 . Wait for the application to start. When Dev Spaces shows a popup notification to open the application, click to **Open In New Tab**.
 +
@@ -303,7 +307,7 @@ public class ClaimsStatsResource {
 +
 NOTE: This code works, but it has some shortcuts. You used `System.out.println` instead of a proper logging framework, and the `catch` block silently swallows exceptions. These code smells are intentional -- the CI/CD pipeline will catch them in Section 4.
 
-. Save the file with kbd:[Ctrl+S] (or kbd:[Cmd+S] on Mac). Quarkus dev mode detects the change and reloads the application -- no manual build step required.
+Quarkus dev mode detects the change and reloads the application -- no manual build step required.
 +
 TIP: If the application does not reload automatically, check the terminal in Dev Spaces for compilation errors. You can also restart dev mode by pressing kbd:[Ctrl+Shift+P], selecting **Tasks: Run Task** -> **devfile** -> **Start Development Mode (Hot Reload + debug)**. If you see a port conflict, stop the existing task first.
 
@@ -385,7 +389,7 @@ Password:
 ----
 --
 
-. Navigate to your component in the catalog.
+. Navigate to your *Parasol Insurance Dev (claims-stats)* component in the catalog.
 
 . Click the **CI** tab to see the pipeline run that was triggered by your push. (you can ignore any failed GitLab pipelines shown - we are using OpenShift pipelines in this exercise)
 +
@@ -551,6 +555,8 @@ public class ClaimsStatsResource {
 Fix code smells: use proper logging and remove empty catch block
 ----
 * Click the dropdown arrow next to **Commit** and select **Commit & Push**
++
+image::devspaces-push-code-smell-fixes.png[Commit and push the code smell fixes from Source Control,link=self,window=blank,width=700]
 
 === Exercise 2: Verify the pipeline passes
 
@@ -590,13 +596,15 @@ The pipeline passed. Your code has been built, tested, scanned, and packaged. No
 +
 image::gitlab-merge-prompt.png[GitLab prompt to open a Merge Request,link=self,window=blank,width=700]
 +
-NOTE: If no prompt appears, click **Merge Requests** in the left sidebar, then **New Merge Request**, and select your branch.
+NOTE: If no prompt appears, refresh the page or click **Merge Requests** in the left sidebar, then **New Merge Request**, and select your branch.
 
 . Review the merge request:
 * Each commit on the _Commits_ tab near the bottom shows your two commits above the initial one created by this environment
 * The _Changes_ tab shows your new `ClaimsStatsResource.java` file with the corrected code
 
 . Click **Create merge request** at the bottom to create the new request. The new request is created and opened for you and others to review.
++
+image::gitlab-merge-request-open.png[Open merge request ready for review in GitLab,link=self,window=blank,width=700]
 
 . At this point, the code would normally be reviewed and approved by others, but for now, to merge your changes into the main branch, just click **Merge**.
 +
@@ -605,6 +613,8 @@ image::gitlab-merged.png[Merge complete,link=self,window=blank,width=700]
 Your changes are now merged into the main branch. To see the dev environment pipeline that picks this up automatically, navigate back to *Developer Hub*, open the *Catalog*, and select the primary *Parasol Insurance* component -- this is the top-level component, _not_ the one associated with your feature branch. The pipeline will redeploy to the dev environment. To promote to production, you need to create a release.
 
 image::rhdh-dev-merge-build.png[Pipeline Run triggered after merging our MR,link=self,window=blank,width=700]
+
+Before creating a release tag, open the **CI** tab of that primary **Parasol Insurance** component. Wait for the new `parasol-insurance-push` pipeline run from your merge to show **Succeeded**. If it fails or stays pending, open the run details and ask the instructor for help. Do not create the tag until the build succeeds.
 
 === Exercise 2: Create a release tag
 
@@ -615,6 +625,8 @@ In a real organization, promoting code to production is typically handled by pla
 . In the left sidebar, click **Code**, then **Tags**.
 
 . Click **New tag**.
++
+image::gitlab-create-tag-ui.png[GitLab form for creating a new tag,link=self,window=blank,width=700]
 
 . Fill in the tag details:
 * **Tag name**: `1.1`
